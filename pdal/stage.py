@@ -8,10 +8,9 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 from .utils import chunked, rechunked
 
-PDAL_DRIVERS = json.loads(
+_PDAL_DRIVERS = json.loads(
     subprocess.run(["pdal", "--drivers", "--showjson"], capture_output=True).stdout
 )
-PDAL_DRIVER_TYPES = [d["name"] for d in PDAL_DRIVERS]
 
 # TODO: set actual PDAL point type
 Point = Tuple[float, float]
@@ -108,24 +107,30 @@ class Pipeline:
 
 class Stage(ABC):
     def __init__(self, **kwargs: Any):
-        stage_kind = self.__class__.__name__.lower()
-        stage_type = kwargs.get("type")
-        if stage_type is not None:
-            if not stage_type.startswith(f"{stage_kind}s."):
-                raise ValueError(f"Invalid {stage_kind} type {stage_type!r}")
-            if stage_type not in PDAL_DRIVER_TYPES:
-                raise ValueError(f"Unknown stage type {stage_type!r}")
-
         if "tag" not in kwargs:
             kwargs["tag"] = str(id(self))
-
         if "inputs" in kwargs:
             kwargs["inputs"] = tuple(
                 input.tag if isinstance(input, Stage) else input
                 for input in kwargs["inputs"]
             )
-
         self._kwargs = kwargs
+
+    def __init_subclass__(cls) -> None:
+        selected_prefix = cls.__name__.lower() + "s"
+        for driver in _PDAL_DRIVERS:
+            full_name = driver["name"]
+            prefix, _, suffix = full_name.partition(".")
+            if prefix == selected_prefix:
+                cls.__set_constructor(full_name, suffix, driver["description"])
+
+    @classmethod
+    def __set_constructor(cls, type: str, name: str, description: str) -> None:
+        constructor = lambda *args, **kwargs: cls(*args, **kwargs, type=type)
+        constructor.__name__ = name
+        constructor.__qualname__ = f"{cls.__name__}.{name}"
+        constructor.__doc__ = description
+        setattr(cls, name, staticmethod(constructor))
 
     @property
     def inputs(self) -> Tuple[str, ...]:
@@ -234,10 +239,10 @@ def run_pipeline(name: str, pipeline: Pipeline) -> None:
 
 if __name__ == "__main__":
     readA = Reader("A.las", spatialreference="EPSG:26916")
-    reproj = Filter("filters.reprojection", in_srs="EPSG:26916", out_srs="EPSG:4326")
+    reproj = Filter.reprojection(in_srs="EPSG:26916", out_srs="EPSG:4326")
     readB = Reader("B.las")
-    merge = Filter("filters.merge", inputs=[reproj, readB])
-    write = Writer("output.tif", type="writers.gdal")
+    merge = Filter.merge(inputs=[reproj, readB])
+    write = Writer.gdal("output.tif")
     p = readA | reproj | readB | merge | write
     run_pipeline("p", p)
 
@@ -253,15 +258,14 @@ if __name__ == "__main__":
     p2 = (
         Reader("A.las", spatialreference="EPSG:26916")
         | Reader("B.las", tag="readB")
-        | Filter(
-            "filters.reprojection",
+        | Filter.reprojection(
             in_srs="EPSG:26916",
             out_srs="EPSG:4326",
             tag="reproj",
         )
         | Reader("C.las", tag="readC")
-        | Filter("filters.merge", inputs=["reproj", "readC"])
-        | Writer("output.tif", type="writers.gdal")
+        | Filter.merge(inputs=["reproj", "readC"])
+        | Writer.gdal("output.tif")
     )
     run_pipeline("p2", p2)
 
