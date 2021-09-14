@@ -157,7 +157,7 @@ class Stage(ABC):
 
     def process_chunks(self, n: int, *chunk_streams: ChunkStream) -> ChunkStream:
         if chunk_streams:
-            return map(self._process_chunk, rechunked(it.chain(*chunk_streams), n))
+            return rechunked(map(self._process_chunk, it.chain(*chunk_streams)), n)
         else:
             return chunked(self.process_points(), n)
 

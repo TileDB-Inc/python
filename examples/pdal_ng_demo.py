@@ -10,7 +10,7 @@ class NumpyReader(pdal.ng.Reader):
         self,
         points: Iterable[pdal.ng.Point],
         type: str = "readers.numpy",
-        **kwargs: Any
+        **kwargs: Any,
     ):
         super().__init__(points=points, type=type, **kwargs)
 
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     pprint(points)
     print()
 
-    pipeline = NumpyReader(points) | EvenFilter(dim_idx=2) | NegateFilter()
+    pipeline = NumpyReader(points) | NegateFilter() | EvenFilter(dim_idx=2)
     print("========================== Pipeline spec ==========================")
     pprint(pipeline.spec)
     print()
