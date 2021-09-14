@@ -41,7 +41,7 @@ class Pipeline:
             raise TypeError(f"Expected Stage or Pipeline instance, not {other}")
         return self
 
-    def validate(self) -> None:
+    def finalize(self) -> None:
         stages = self._stages
 
         if not stages:
@@ -80,7 +80,7 @@ class Pipeline:
 
     def process_points(self, *point_streams: PointStream) -> PointStream:
         # TODO: create new Reader stages for each point_stream
-        self.validate()
+        self.finalize()
         # For each stage, determine the input(s) based on the input tags and call its
         # process_points() to get its (lazy) output. This output in turn may be used as
         # input to subsequent stage(s). Once all iterators have been determined, return
@@ -93,7 +93,7 @@ class Pipeline:
 
     def process_chunks(self, n: int, *chunk_streams: ChunkStream) -> ChunkStream:
         # TODO: create new Reader stages for each chunk_stream
-        self.validate()
+        self.finalize()
         # For each stage, determine the input(s) based on the input tags and call its
         # process_chunks() to get its (lazy) output. This output in turn may be used as
         # input to subsequent stage(s). Once all iterators have been determined, return
