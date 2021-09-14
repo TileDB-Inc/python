@@ -142,8 +142,15 @@ class Stage(ABC):
         return str(self._kwargs["tag"])
 
     @property
+    def type(self) -> Optional[str]:
+        return self._kwargs.get("type")
+
+    @property
     def spec(self) -> Mapping[str, Any]:
         return dict(self._kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}(type={self.type!r}, tag={self.tag!r})"
 
     def __or__(self, other: Union[Stage, Pipeline]) -> Pipeline:
         return Pipeline(self) | other
@@ -166,23 +173,11 @@ class Stage(ABC):
 
 
 class Reader(Stage):
-    def __init__(self, filename: str, **kwargs: Any):
-        super().__init__(filename=filename, **kwargs)
-
-    def __str__(self) -> str:
-        return f"Reader(filename={self._kwargs['filename']!r})"
-
     def process_points(self, *point_streams: PointStream) -> PointStream:
         raise NotImplementedError("TODO")
 
 
 class Filter(Stage):
-    def __init__(self, type: str, **kwargs: Any):
-        super().__init__(type=type, **kwargs)
-
-    def __str__(self) -> str:
-        return f"Filter(type={self._kwargs['type']!r})"
-
     def process_points(self, *point_streams: PointStream) -> PointStream:
         for point_stream in point_streams:
             for point in map(self._filter_point, point_stream):
@@ -194,12 +189,6 @@ class Filter(Stage):
 
 
 class Writer(Stage):
-    def __init__(self, filename: str, **kwargs: Any):
-        super().__init__(filename=filename, **kwargs)
-
-    def __str__(self) -> str:
-        return f"Writer(filename={self._kwargs['filename']!r})"
-
     def process_points(self, *point_streams: PointStream) -> PointStream:
         for point_stream in point_streams:
             for point in point_stream:
