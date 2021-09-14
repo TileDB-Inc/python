@@ -1,3 +1,21 @@
-__all__ = ["Pipeline", "Reader", "Filter", "Writer"]
+__all__ = [
+    "Point",
+    "PointStream",
+    "Chunk",
+    "ChunkStream",
+    "Reader",
+    "Filter",
+    "Writer",
+    "Pipeline",
+]
 
-from .pipeline import Pipeline, Reader, Filter, Writer
+from .pipeline import (
+    Chunk,
+    ChunkStream,
+    Filter,
+    Pipeline,
+    Point,
+    PointStream,
+    Reader,
+    Writer,
+)
