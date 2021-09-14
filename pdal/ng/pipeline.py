@@ -6,14 +6,15 @@ import subprocess
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 
+from numpy.typing import NDArray
+
 from .utils import chunked, rechunked
 
 _PDAL_DRIVERS = json.loads(
     subprocess.run(["pdal", "--drivers", "--showjson"], capture_output=True).stdout
 )
 
-# TODO: set actual PDAL point type
-Point = Tuple[float, float]
+Point = NDArray[Any]
 PointStream = Iterator[Point]
 Chunk = Sequence[Point]
 ChunkStream = Iterator[Chunk]
@@ -172,8 +173,7 @@ class Reader(Stage):
         return f"Reader(filename={self._kwargs['filename']!r})"
 
     def process_points(self, *point_streams: PointStream) -> PointStream:
-        # TODO
-        yield from self._kwargs["filename"]
+        raise NotImplementedError("TODO")
 
 
 class Filter(Stage):
@@ -190,8 +190,7 @@ class Filter(Stage):
                     yield point
 
     def _filter_point(self, point: Point) -> Optional[Point]:
-        # TODO
-        return f"{self}({point})"
+        raise NotImplementedError("TODO")
 
 
 class Writer(Stage):
@@ -216,5 +215,4 @@ class Writer(Stage):
             self._write_point(point)
 
     def _write_point(self, point: Point) -> None:
-        # TODO
-        print(f"\t{self}({point})")
+        raise NotImplementedError("TODO")
