@@ -3,8 +3,7 @@ from __future__ import annotations
 import itertools as it
 import json
 import subprocess
-from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union, cast
 
 from numpy.typing import NDArray
 
@@ -18,6 +17,7 @@ Point = NDArray[Any]
 PointStream = Iterator[Point]
 Chunk = Sequence[Point]
 ChunkStream = Iterator[Chunk]
+PointOrChunkStream = Union[PointStream, ChunkStream]
 
 
 class Pipeline:
@@ -60,10 +60,12 @@ class Pipeline:
                         if input not in tags[:i]:
                             raise ValueError(f"Undefined stage tag '{input}'")
                 else:
+                    if not default_inputs:
+                        raise ValueError(f"Inputs are required for {stage}")
                     stages[i] = stage = stage.replace(inputs=default_inputs)
                 default_inputs.clear()
             elif stage.inputs:
-                raise ValueError(f"Inputs not permitted for reader '{stage}'")
+                raise ValueError(f"Inputs are not allowed for {stage}")
             default_inputs.append(stage)
 
         # ensure the only sink stage is the last one
@@ -81,32 +83,54 @@ class Pipeline:
 
     def process_points(self, *point_streams: PointStream) -> PointStream:
         # TODO: create new Reader stages for each point_stream
-        self.finalize()
-        # For each stage, determine the input(s) based on the input tags and call its
-        # process_points() to get its (lazy) output. This output in turn may be used as
-        # input to subsequent stage(s). Once all iterators have been determined, return
-        # the iterator of the last stage that subsumes all the previous ones.
-        tagged_point_streams: Dict[str, PointStream] = {}
-        for stage in self._stages:
-            input_streams = tuple(tagged_point_streams[tag] for tag in stage.inputs)
-            tagged_point_streams[stage.tag] = stage.process_points(*input_streams)
-        return tagged_point_streams[self._stages[-1].tag]
+        return cast(PointStream, self._process_points_or_chunks())
 
     def process_chunks(self, n: int, *chunk_streams: ChunkStream) -> ChunkStream:
         # TODO: create new Reader stages for each chunk_stream
+        return cast(ChunkStream, self._process_points_or_chunks(n))
+
+    def _process_points_or_chunks(self, n: Optional[int] = None) -> PointOrChunkStream:
         self.finalize()
-        # For each stage, determine the input(s) based on the input tags and call its
-        # process_chunks() to get its (lazy) output. This output in turn may be used as
-        # input to subsequent stage(s). Once all iterators have been determined, return
-        # the iterator of the last stage that subsumes all the previous ones.
-        tagged_chunk_streams: Dict[str, ChunkStream] = {}
+        # For each stage, determine the input streams based on the input tags and call
+        # its {read,process}_{points,chunks} method to get the output stream. This output
+        # in turn is used as input to subsequent stage(s). Once all stream have been
+        # determined, return the stream of the last stage that effectively subsumes all
+        # the previous ones.
+        tagged_streams: Dict[str, PointOrChunkStream] = {}
         for stage in self._stages:
-            input_streams = tuple(tagged_chunk_streams[tag] for tag in stage.inputs)
-            tagged_chunk_streams[stage.tag] = stage.process_chunks(n, *input_streams)
-        return tagged_chunk_streams[self._stages[-1].tag]
+            istreams = tuple(tagged_streams[tag] for tag in stage.inputs)
+            ostream: PointOrChunkStream
+            if isinstance(stage, Reader):
+                assert not istreams
+                if n is None:
+                    ostream = stage.read_points()
+                else:
+                    ostream = stage.read_chunks(n)
+            elif isinstance(stage, (Filter, Writer)):
+                assert istreams
+                if len(istreams) == 1:
+                    istream = istreams[0]
+                else:
+                    istream = cast(PointOrChunkStream, it.chain.from_iterable(istreams))
+                    if n is not None:
+                        # chaining multiple streams chunked by n is not necessarily
+                        # chunked by n so we need to rechunk it
+                        istream = rechunked(istream, n)
+                if n is None:
+                    ostream = stage.process_points(cast(PointStream, istream))
+                else:
+                    ostream = stage.process_chunks(cast(ChunkStream, istream))
+                    if isinstance(stage, Filter):
+                        # for filters the output stream may not be chunked by n
+                        # so we need to rechunk it
+                        ostream = rechunked(ostream, n)
+            else:
+                assert False
+            tagged_streams[stage.tag] = ostream
+        return tagged_streams[self._stages[-1].tag]
 
 
-class Stage(ABC):
+class Stage:
     def __init__(
         self,
         *,
@@ -151,46 +175,39 @@ class Stage(ABC):
     def replace(self, **kwargs: Any) -> Stage:
         return self.__class__(**dict(self.__dict__, **kwargs))
 
-    @abstractmethod
-    def process_points(self, *point_streams: PointStream) -> PointStream:
-        ...
-
-    def process_chunks(self, n: int, *chunk_streams: ChunkStream) -> ChunkStream:
-        if chunk_streams:
-            return rechunked(map(self._process_chunk, it.chain(*chunk_streams)), n)
-        else:
-            return chunked(self.process_points(), n)
-
-    def _process_chunk(self, chunk: Chunk) -> Chunk:
-        return list(self.process_points(iter(chunk)))
-
 
 class Reader(Stage):
-    def process_points(self, *point_streams: PointStream) -> PointStream:
+    def read_points(self) -> PointStream:
         raise NotImplementedError("TODO")
+
+    def read_chunks(self, n: int) -> ChunkStream:
+        return chunked(self.read_points(), n)
 
 
 class Filter(Stage):
-    def process_points(self, *point_streams: PointStream) -> PointStream:
-        for point_stream in point_streams:
-            for point in map(self._filter_point, point_stream):
-                if point is not None:
-                    yield point
+    def process_points(self, point_stream: PointStream) -> PointStream:
+        return (p for p in map(self._filter_point, point_stream) if p is not None)
+
+    def process_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
+        return filter(None, map(self._filter_chunk, chunk_stream))
+
+    def _filter_chunk(self, chunk: Chunk) -> Chunk:
+        return list(self.process_points(iter(chunk)))
 
     def _filter_point(self, point: Point) -> Optional[Point]:
         raise NotImplementedError("TODO")
 
 
 class Writer(Stage):
-    def process_points(self, *point_streams: PointStream) -> PointStream:
-        for point_stream in point_streams:
-            for point in point_stream:
-                self._write_point(point)
-                yield point
+    def process_points(self, point_stream: PointStream) -> PointStream:
+        for point in point_stream:
+            self._write_point(point)
+            yield point
 
-    def _process_chunk(self, chunk: Chunk) -> Chunk:
-        self._write_chunk(chunk)
-        return chunk
+    def process_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
+        for chunk in chunk_stream:
+            self._write_chunk(chunk)
+            yield chunk
 
     def _write_chunk(self, chunk: Chunk) -> None:
         for point in chunk:

@@ -14,9 +14,7 @@ class NumpyReader(pdal.ng.Reader):
     ):
         super().__init__(points=points, type=type, **kwargs)
 
-    def process_points(
-        self, *point_streams: pdal.ng.PointStream
-    ) -> pdal.ng.PointStream:
+    def read_points(self) -> pdal.ng.PointStream:
         return iter(self.points)
 
 
