@@ -4,7 +4,7 @@ import itertools as it
 import json
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union
 
 from numpy.typing import NDArray
 
@@ -107,15 +107,18 @@ class Pipeline:
 
 
 class Stage(ABC):
-    def __init__(self, **kwargs: Any):
-        if "tag" not in kwargs:
-            kwargs["tag"] = str(id(self))
-        if "inputs" in kwargs:
-            kwargs["inputs"] = tuple(
-                input.tag if isinstance(input, Stage) else input
-                for input in kwargs["inputs"]
-            )
-        self._kwargs = kwargs
+    def __init__(
+        self,
+        *,
+        type: Optional[str] = None,
+        tag: Optional[str] = None,
+        inputs: Sequence[Union[Stage, str]] = (),
+        **kwargs: Any,
+    ):
+        self.type = type
+        self.tag = tag if tag is not None else str(id(self))
+        self.inputs = tuple(i.tag if isinstance(i, Stage) else i for i in inputs)
+        self.__dict__.update(kwargs)
 
     def __init_subclass__(cls) -> None:
         selected_prefix = cls.__name__.lower() + "s"
@@ -134,20 +137,10 @@ class Stage(ABC):
         setattr(cls, name, staticmethod(constructor))
 
     @property
-    def inputs(self) -> Tuple[str, ...]:
-        return self._kwargs.get("inputs", ())
-
-    @property
-    def tag(self) -> str:
-        return str(self._kwargs["tag"])
-
-    @property
-    def type(self) -> Optional[str]:
-        return self._kwargs.get("type")
-
-    @property
     def spec(self) -> Mapping[str, Any]:
-        return dict(self._kwargs)
+        return {
+            k: v for k, v in self.__dict__.items() if k not in ("type", "inputs") or v
+        }
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}(type={self.type!r}, tag={self.tag!r})"
@@ -156,7 +149,7 @@ class Stage(ABC):
         return Pipeline(self) | other
 
     def replace(self, **kwargs: Any) -> Stage:
-        return self.__class__(**dict(self._kwargs, **kwargs))
+        return self.__class__(**dict(self.__dict__, **kwargs))
 
     @abstractmethod
     def process_points(self, *point_streams: PointStream) -> PointStream:
