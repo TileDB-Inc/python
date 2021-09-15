@@ -4,7 +4,18 @@ import itertools as it
 import json
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union, cast
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+)
 
 from numpy.typing import NDArray
 
@@ -82,13 +93,17 @@ class Pipeline:
     def __iter__(self) -> PointStream:
         return self.process_points()
 
-    def process_points(self, *point_streams: PointStream) -> PointStream:
-        # TODO: create new Reader stages for each point_stream
-        return cast(PointStream, self._process_points_or_chunks())
+    def process_points(self, *point_sources: Iterable[Point]) -> PointStream:
+        pipeline = self
+        for points in reversed(point_sources):
+            pipeline = PointsReader(points) | pipeline
+        return cast(PointStream, pipeline._process_points_or_chunks())
 
-    def process_chunks(self, n: int, *chunk_streams: ChunkStream) -> ChunkStream:
-        # TODO: create new Reader stages for each chunk_stream
-        return cast(ChunkStream, self._process_points_or_chunks(n))
+    def process_chunks(self, n: int, *chunk_sources: Iterable[Chunk]) -> ChunkStream:
+        pipeline = self
+        for chunks in reversed(chunk_sources):
+            pipeline = ChunksReader(chunks) | pipeline
+        return cast(ChunkStream, pipeline._process_points_or_chunks(n))
 
     def _process_points_or_chunks(self, n: Optional[int] = None) -> PointOrChunkStream:
         self.finalize()
@@ -184,6 +199,28 @@ class Reader(Stage):
 
     def read_chunks(self, n: int) -> ChunkStream:
         return chunked(self.read_points(), n)
+
+
+class PointsReader(Reader):
+
+    points: Iterable[Point]
+
+    def __init__(self, points: Iterable[Point]):
+        super().__init__(points=points)
+
+    def read_points(self) -> PointStream:
+        return iter(self.points)
+
+
+class ChunksReader(Reader):
+
+    chunks: Iterable[Chunk]
+
+    def __init__(self, chunks: Iterable[Chunk]):
+        super().__init__(chunks=chunks)
+
+    def read_points(self) -> PointStream:
+        return it.chain.from_iterable(self.chunks)
 
 
 class Filter(Stage):

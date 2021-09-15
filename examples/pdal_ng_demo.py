@@ -1,35 +1,22 @@
 from pprint import pprint
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 import numpy as np
 import pdal.ng
 
 
-class NumpyReader(pdal.ng.Reader):
-    def __init__(
-        self,
-        points: Iterable[pdal.ng.Point],
-        type: str = "readers.numpy",
-        **kwargs: Any,
-    ):
-        super().__init__(points=points, type=type, **kwargs)
-
-    def read_points(self) -> pdal.ng.PointStream:
-        return iter(self.points)
-
-
 class EvenFilter(pdal.ng.Filter):
-    def __init__(self, dim_idx: int, type: str = "filters.even", **kwargs: Any):
-        super().__init__(dim_idx=dim_idx, type=type, **kwargs)
+
+    dim_idx: int
+
+    def __init__(self, dim_idx: int, **kwargs: Any):
+        super().__init__(dim_idx=dim_idx, **kwargs)
 
     def _filter_point(self, point: pdal.ng.Point) -> Optional[pdal.ng.Point]:
         return point if point[self.dim_idx] % 2 == 0 else None
 
 
 class NegateFilter(pdal.ng.Filter):
-    def __init__(self, type: str = "filters.negate", **kwargs: Any):
-        super().__init__(type=type, **kwargs)
-
     def _filter_point(self, point: pdal.ng.Point) -> Optional[pdal.ng.Point]:
         return -point
 
@@ -49,23 +36,26 @@ if __name__ == "__main__":
     pprint(points)
     print()
 
-    pipeline = NumpyReader(points) | NegateFilter() | EvenFilter(dim_idx=2)
-    print("========================== Pipeline spec ==========================")
-    pprint(pipeline.spec)
-    print()
+    pipeline = NegateFilter() | EvenFilter(dim_idx=2)
 
     print("========================== Output points ==========================")
-    for i, point in enumerate(pipeline):
+    for i, point in enumerate(pipeline.process_points(points)):
         print(i, point)
     print()
 
-    print("========================== Output point chunks ==========================")
-    for i, chunk in enumerate(pipeline.process_chunks(3)):
+    print("========================== Output chunks ==========================")
+    for i, chunk in enumerate(pipeline.process_chunks(3, [points])):
         print(f"chunk {i}: {chunk.__class__.__name__}, {len(chunk)} points")
         for point in chunk:
             print("\t", point)
     print()
 
-    print("========================== Pipe output to stdout ==========================")
-    for point in pipeline | StdoutWriter():
+    print("====================== Write output points to stdout ======================")
+    for point in (pipeline | StdoutWriter()).process_points(points):
         pass
+    print()
+
+    print("====================== Write output chunks to stdout ======================")
+    for point in (pipeline | StdoutWriter()).process_chunks(3, [points]):
+        pass
+    print()
