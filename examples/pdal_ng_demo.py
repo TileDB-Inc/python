@@ -47,7 +47,7 @@ def main() -> None:
     print()
 
     print("========================== Output chunks ==========================")
-    for i, chunk in enumerate(pipeline.process_chunks(3, [points])):
+    for i, chunk in enumerate(pipeline.process_chunks(points, chunk_size=3)):
         print(f"chunk {i}: {chunk.__class__.__name__}, {len(chunk)} points")
         for point in chunk:
             print("\t", point)
@@ -59,7 +59,7 @@ def main() -> None:
     print()
 
     print("====================== Write output chunks to stdout ======================")
-    for chunk in (pipeline | StdoutWriter()).process_chunks(3, [points]):
+    for chunk in (pipeline | StdoutWriter()).process_chunks(points, chunk_size=3):
         pass
     print()
 

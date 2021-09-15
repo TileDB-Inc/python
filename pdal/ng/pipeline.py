@@ -4,18 +4,7 @@ import itertools as it
 import json
 import subprocess
 from abc import ABC, abstractmethod
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Mapping,
-    Optional,
-    Sequence,
-    Union,
-    cast,
-)
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -33,7 +22,6 @@ Point = np.void
 Chunk = NDArray[Point]
 PointStream = Iterator[Point]
 ChunkStream = Iterator[Chunk]
-PointOrChunkStream = Union[PointStream, ChunkStream]
 
 
 class Pipeline:
@@ -97,35 +85,36 @@ class Pipeline:
     def __iter__(self) -> PointStream:
         return self.process_points()
 
-    def process_points(self, *point_sources: Iterable[Point]) -> PointStream:
-        pipeline = self
-        for points in reversed(point_sources):
-            pipeline = PointsReader(points) | pipeline
-        return cast(PointStream, pipeline._process_points_or_chunks())
+    def process_points(self, *chunks: Chunk) -> PointStream:
+        return cast(PointStream, self._process(*chunks))
 
-    def process_chunks(self, n: int, *chunk_sources: Iterable[Chunk]) -> ChunkStream:
-        pipeline = self
-        for chunks in reversed(chunk_sources):
-            pipeline = ChunksReader(chunks) | pipeline
-        return cast(ChunkStream, pipeline._process_points_or_chunks(n))
+    def process_chunks(self, *chunks: Chunk, chunk_size: int) -> ChunkStream:
+        return cast(ChunkStream, self._process(*chunks, chunk_size=chunk_size))
 
-    def _process_points_or_chunks(self, n: Optional[int] = None) -> PointOrChunkStream:
-        self.finalize()
+    def _process(
+        self, *chunks: Chunk, chunk_size: Optional[int] = None
+    ) -> Union[PointStream, ChunkStream]:
+        if chunks:
+            pipeline = Pipeline(ChunkReader(*chunks))
+            pipeline |= self
+        else:
+            pipeline = self
+        pipeline.finalize()
         # For each stage, determine the input streams based on the input tags and call
         # its {read,process}_{points,chunks} method to get the output stream. This output
         # in turn is used as input to subsequent stage(s). Once all stream have been
         # determined, return the stream of the last stage that effectively subsumes all
         # the previous ones.
-        tagged_streams: Dict[str, PointOrChunkStream] = {}
-        for stage in self._stages:
+        tagged_streams: Dict[str, Union[PointStream, ChunkStream]] = {}
+        for stage in pipeline._stages:
             istreams = tuple(tagged_streams[tag] for tag in stage.inputs)
-            ostream: PointOrChunkStream
+            ostream: Union[PointStream, ChunkStream]
             if isinstance(stage, Reader):
                 assert not istreams
-                if n is None:
+                if chunk_size is None:
                     ostream = stage.read_points()
                 else:
-                    ostream = stage.read_chunks(n)
+                    ostream = stage.read_chunks(chunk_size)
             elif isinstance(stage, (Filter, Writer)):
                 assert istreams
                 istream: Iterator[np._ArrayOrScalarCommon]
@@ -133,22 +122,22 @@ class Pipeline:
                     istream = istreams[0]
                 else:
                     istream = it.chain.from_iterable(istreams)
-                    if n is not None:
-                        # chaining multiple streams chunked by n is not necessarily
-                        # chunked by n so we need to rechunk it
-                        istream = rechunk_arrays(cast(ChunkStream, istream), n)
-                if n is None:
+                    if chunk_size is not None:
+                        # chaining multiple streams chunked by chunk_size is not
+                        # necessarily chunked by chunk_size so we need to rechunk it
+                        istream = rechunk_arrays(cast(ChunkStream, istream), chunk_size)
+                if chunk_size is None:
                     ostream = stage.process_points(cast(PointStream, istream))
                 else:
                     ostream = stage.process_chunks(cast(ChunkStream, istream))
                     if isinstance(stage, Filter):
-                        # for filters the output stream may not be chunked by n
+                        # for filters the output stream may not be chunked by chunk_size
                         # so we need to rechunk it
-                        ostream = rechunk_arrays(ostream, n)
+                        ostream = rechunk_arrays(ostream, chunk_size)
             else:
                 assert False
             tagged_streams[stage.tag] = ostream
-        return tagged_streams[self._stages[-1].tag]
+        return tagged_streams[pipeline._stages[-1].tag]
 
 
 class Stage(ABC):
@@ -202,26 +191,15 @@ class Reader(Stage):
     def read_points(self) -> PointStream:
         """Return an iterator of points from the underlying source"""
 
-    def read_chunks(self, n: int) -> ChunkStream:
-        return map(np.array, chunked(self.read_points(), n))
+    def read_chunks(self, chunk_size: int) -> ChunkStream:
+        return map(np.array, chunked(self.read_points(), chunk_size))
 
 
-class PointsReader(Reader):
+class ChunkReader(Reader):
 
-    points: Iterable[Point]
+    chunks: Sequence[Chunk]
 
-    def __init__(self, points: Iterable[Point]):
-        super().__init__(points=points)
-
-    def read_points(self) -> PointStream:
-        return iter(self.points)
-
-
-class ChunksReader(Reader):
-
-    chunks: Iterable[Chunk]
-
-    def __init__(self, chunks: Iterable[Chunk]):
+    def __init__(self, *chunks: Chunk):
         super().__init__(chunks=chunks)
 
     def read_points(self) -> PointStream:

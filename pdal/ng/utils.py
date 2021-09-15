@@ -4,7 +4,6 @@ from typing import Iterable, Iterator, List, TypeVar
 import numpy as np
 from numpy.typing import NDArray
 
-
 T = TypeVar("T")
 Scalar = TypeVar("Scalar", bound=np.generic)
 
