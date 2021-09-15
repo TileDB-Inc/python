@@ -33,7 +33,6 @@ def create_pipeline_in_place() -> Pipeline:
 
 
 def run_pipeline(name: str, pipeline: Pipeline) -> None:
-    pipeline.finalize()
     print(f"* {name}.spec:", json.dumps(pipeline.spec, indent=4))
     print(f"* {name}.process_points():")
     print("Output:")

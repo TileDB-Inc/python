@@ -4,7 +4,18 @@ import itertools as it
 import json
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union, cast
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Union,
+    cast,
+)
 
 import numpy as np
 from numpy.typing import NDArray
@@ -46,42 +57,6 @@ class Pipeline:
             raise TypeError(f"Expected Stage or Pipeline instance, not {other}")
         return self
 
-    def finalize(self) -> None:
-        stages = self._stages
-
-        if not stages:
-            raise ValueError("Empty pipeline is not allowed")
-
-        tags = tuple(stage.tag for stage in stages)
-        if len(tags) != len(set(tags)):
-            raise ValueError(f"Duplicate tag in {tags}")
-
-        default_inputs: List[Stage] = []
-        for i, stage in enumerate(stages):
-            if not isinstance(stage, Reader):
-                if stage.inputs:
-                    for input in stage.inputs:
-                        if input not in tags[:i]:
-                            raise ValueError(f"Undefined stage tag '{input}'")
-                else:
-                    if not default_inputs:
-                        raise ValueError(f"Inputs are required for {stage}")
-                    stages[i] = stage = stage.replace(inputs=default_inputs)
-                default_inputs.clear()
-            elif stage.inputs:
-                raise ValueError(f"Inputs are not allowed for {stage}")
-            default_inputs.append(stage)
-
-        # ensure the only sink stage is the last one
-        all_inputs = set(input for stage in stages for input in stage.inputs)
-        sinks = tuple(tag for tag in tags if tag not in all_inputs)
-        if len(sinks) == 1:
-            assert sinks[0] == tags[-1]
-        else:
-            raise ValueError(
-                f"Exactly one sink stage is allowed, {len(sinks)} found: {sinks}"
-            )
-
     def __iter__(self) -> PointStream:
         return self.process_points()
 
@@ -99,14 +74,11 @@ class Pipeline:
             pipeline |= self
         else:
             pipeline = self
-        pipeline.finalize()
         # For each stage, determine the input streams based on the input tags and call
-        # its {read,process}_{points,chunks} method to get the output stream. This output
-        # in turn is used as input to subsequent stage(s). Once all stream have been
-        # determined, return the stream of the last stage that effectively subsumes all
-        # the previous ones.
+        # its {read,process}_{points,chunks} method to compute (lazily) the output stream.
+        # This output stream can in turn be used as input to subsequent stage(s).
         tagged_streams: Dict[str, Union[PointStream, ChunkStream]] = {}
-        for stage in pipeline._stages:
+        for stage in pipeline._iter_final_stages():
             istreams = tuple(tagged_streams[tag] for tag in stage.inputs)
             ostream: Union[PointStream, ChunkStream]
             if isinstance(stage, Reader):
@@ -123,21 +95,63 @@ class Pipeline:
                 else:
                     istream = it.chain.from_iterable(istreams)
                     if chunk_size is not None:
-                        # chaining multiple streams chunked by chunk_size is not
+                        # Chaining multiple streams chunked by chunk_size is not
                         # necessarily chunked by chunk_size so we need to rechunk it
                         istream = rechunk_arrays(cast(ChunkStream, istream), chunk_size)
                 if chunk_size is None:
                     ostream = stage.process_points(cast(PointStream, istream))
                 else:
                     ostream = stage.process_chunks(cast(ChunkStream, istream))
+                    # The output stream of a Writer is the same as its input so since the
+                    # input is chunked by chunk_size we don't need to rechunk it. For a
+                    # Filter this is not the case so we need to rechunk it.
                     if isinstance(stage, Filter):
-                        # for filters the output stream may not be chunked by chunk_size
-                        # so we need to rechunk it
                         ostream = rechunk_arrays(ostream, chunk_size)
             else:
                 assert False
             tagged_streams[stage.tag] = ostream
-        return tagged_streams[pipeline._stages[-1].tag]
+
+        # Once the stream of every stage has been determined, return the stream of the
+        # last stage that effectively subsumes all the previous ones
+        return tagged_streams[stage.tag]
+
+    def _iter_final_stages(self) -> Iterator[Stage]:
+        if not self._stages:
+            raise ValueError("Empty pipeline is not allowed")
+
+        tags = tuple(stage.tag for stage in self._stages)
+        if len(tags) != len(set(tags)):
+            raise ValueError(f"Duplicate tag in {tags}")
+
+        input_tags: Set[str] = set()
+        default_inputs: List[Stage] = []
+        for i, stage in enumerate(self._stages):
+            if not isinstance(stage, Reader):
+                if stage.inputs:
+                    prev_tags = tags[:i]
+                    if any(tag not in prev_tags for tag in stage.inputs):
+                        raise ValueError(f"{stage} has a previously undefined input")
+                else:
+                    if not default_inputs:
+                        raise ValueError(f"Inputs are required for {stage}")
+                    stage = stage.replace(inputs=default_inputs)
+                default_inputs.clear()
+                input_tags.update(stage.inputs)
+            elif stage.inputs:
+                raise ValueError(f"Inputs are not allowed for {stage}")
+            default_inputs.append(stage)
+            yield stage
+
+        # ensure that there's only one sink stage, the last one
+        sink_tags = tuple(tag for tag in tags if tag not in input_tags)
+        if len(sink_tags) != 1:
+            raise ValueError(
+                f"Exactly one sink stage is allowed, {len(sink_tags)} found: {sink_tags}"
+            )
+        if sink_tags[0] != tags[-1]:
+            raise ValueError(
+                f"The sink stage is {sink_tags[0]}, not the last one {tags[-1]}"
+            )
 
 
 class Stage(ABC):
