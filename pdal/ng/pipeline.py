@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools as it
 import json
 import subprocess
+from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Union, cast
 
 from numpy.typing import NDArray
@@ -130,7 +131,7 @@ class Pipeline:
         return tagged_streams[self._stages[-1].tag]
 
 
-class Stage:
+class Stage(ABC):
     def __init__(
         self,
         *,
@@ -177,8 +178,9 @@ class Stage:
 
 
 class Reader(Stage):
+    @abstractmethod
     def read_points(self) -> PointStream:
-        raise NotImplementedError("TODO")
+        """Return an iterator of points from the underlying source"""
 
     def read_chunks(self, n: int) -> ChunkStream:
         return chunked(self.read_points(), n)
@@ -194,8 +196,9 @@ class Filter(Stage):
     def _filter_chunk(self, chunk: Chunk) -> Chunk:
         return list(self.process_points(iter(chunk)))
 
+    @abstractmethod
     def _filter_point(self, point: Point) -> Optional[Point]:
-        raise NotImplementedError("TODO")
+        """Transform and return the given point or return None to filter it out"""
 
 
 class Writer(Stage):
@@ -213,5 +216,6 @@ class Writer(Stage):
         for point in chunk:
             self._write_point(point)
 
+    @abstractmethod
     def _write_point(self, point: Point) -> None:
-        raise NotImplementedError("TODO")
+        """Write the given point to the underlying sink"""
