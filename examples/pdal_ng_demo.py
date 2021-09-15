@@ -1,9 +1,7 @@
-from typing import Any, Optional, cast
+from typing import Any
 
 import numpy as np
 import pdal.ng
-
-Point = pdal.ng.Point
 
 
 class EvenFilter(pdal.ng.Filter):
@@ -13,28 +11,26 @@ class EvenFilter(pdal.ng.Filter):
     def __init__(self, dim_idx: int, **kwargs: Any):
         super().__init__(dim_idx=dim_idx, **kwargs)
 
-    def _filter_point(self, point: Point) -> Optional[Point]:
-        return point if point[self.dim_idx] % 2 == 0 else None
+    def process_points(self, point_stream: pdal.ng.PointStream) -> pdal.ng.PointStream:
+        return (point for point in point_stream if point[self.dim_idx] % 2 == 0)
 
 
 class NegateFilter(pdal.ng.Filter):
-    def _filter_point(self, point: Point) -> Optional[Point]:
-        # If point was a regular ndarray or scalar we'd just return `-point`.
+    def process_points(self, point_stream: pdal.ng.PointStream) -> pdal.ng.PointStream:
+        # If each point was a regular ndarray or scalar we'd just return `-point`.
         # Since point is a structured array scalar (np.void), we have to operate on every
         # field explicitly. Additionally, there doesn't seem to be a way to create a new
         # structured array scalar directly; instead we create a 0d array and get its item
-        dtype = point.dtype
-        assert dtype.names is not None
-        arr = np.array(tuple(-point[name] for name in dtype.names), dtype)
-        return cast(Point, arr[()])
+        for point in point_stream:
+            yield np.array((-point["X"], -point["Y"], -point["Z"]), point.dtype)[()]
 
 
 class StdoutWriter(pdal.ng.Writer):
-    def _write_point(self, point: Point) -> None:
+    def _write_point(self, point: pdal.ng.Point) -> None:
         print(point)
 
 
-if __name__ == "__main__":
+def main() -> None:
     dtype = [(dim, np.float32) for dim in ("X", "Y", "Z")]
     points = np.array([(i, 2 * i, 3 * i) for i in range(20)], dtype=dtype)
 
@@ -66,3 +62,7 @@ if __name__ == "__main__":
     for chunk in (pipeline | StdoutWriter()).process_chunks(3, [points]):
         pass
     print()
+
+
+if __name__ == "__main__":
+    main()
