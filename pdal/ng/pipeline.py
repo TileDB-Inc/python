@@ -17,17 +17,21 @@ from typing import (
     cast,
 )
 
+import numpy as np
 from numpy.typing import NDArray
 
-from .utils import chunked, rechunked
+from .utils import chunked, rechunk_arrays
 
 _PDAL_DRIVERS = json.loads(
     subprocess.run(["pdal", "--drivers", "--showjson"], capture_output=True).stdout
 )
 
-Point = NDArray[Any]
+# Point is a numpy structured scalar (numpy.void)
+# https://numpy.org/doc/stable/user/basics.rec.html#indexing-with-an-integer-to-get-a-structured-scalar
+Point = np.void
+# Chunk is a 1-dimensional numpy (structured) array of points
+Chunk = NDArray[Point]
 PointStream = Iterator[Point]
-Chunk = Sequence[Point]
 ChunkStream = Iterator[Chunk]
 PointOrChunkStream = Union[PointStream, ChunkStream]
 
@@ -124,14 +128,15 @@ class Pipeline:
                     ostream = stage.read_chunks(n)
             elif isinstance(stage, (Filter, Writer)):
                 assert istreams
+                istream: Iterator[np._ArrayOrScalarCommon]
                 if len(istreams) == 1:
                     istream = istreams[0]
                 else:
-                    istream = cast(PointOrChunkStream, it.chain.from_iterable(istreams))
+                    istream = it.chain.from_iterable(istreams)
                     if n is not None:
                         # chaining multiple streams chunked by n is not necessarily
                         # chunked by n so we need to rechunk it
-                        istream = rechunked(istream, n)
+                        istream = rechunk_arrays(cast(ChunkStream, istream), n)
                 if n is None:
                     ostream = stage.process_points(cast(PointStream, istream))
                 else:
@@ -139,7 +144,7 @@ class Pipeline:
                     if isinstance(stage, Filter):
                         # for filters the output stream may not be chunked by n
                         # so we need to rechunk it
-                        ostream = rechunked(ostream, n)
+                        ostream = rechunk_arrays(ostream, n)
             else:
                 assert False
             tagged_streams[stage.tag] = ostream
@@ -198,7 +203,7 @@ class Reader(Stage):
         """Return an iterator of points from the underlying source"""
 
     def read_chunks(self, n: int) -> ChunkStream:
-        return chunked(self.read_points(), n)
+        return map(np.array, chunked(self.read_points(), n))
 
 
 class PointsReader(Reader):
@@ -228,10 +233,11 @@ class Filter(Stage):
         return (p for p in map(self._filter_point, point_stream) if p is not None)
 
     def process_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
-        return filter(None, map(self._filter_chunk, chunk_stream))
+        return (c for c in map(self._filter_chunk, chunk_stream) if len(c) > 0)
 
     def _filter_chunk(self, chunk: Chunk) -> Chunk:
-        return list(self.process_points(iter(chunk)))
+        # TODO: optimize this
+        return np.array(list(self.process_points(iter(chunk))))
 
     @abstractmethod
     def _filter_point(self, point: Point) -> Optional[Point]:
