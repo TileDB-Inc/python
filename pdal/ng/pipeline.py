@@ -134,7 +134,7 @@ class Pipeline:
                 else:
                     if not default_inputs:
                         raise ValueError(f"Inputs are required for {stage}")
-                    stage = stage.replace(inputs=default_inputs)
+                    stage = stage.with_inputs(default_inputs)
                 default_inputs.clear()
                 input_tags.update(stage.inputs)
             elif stage.inputs:
@@ -194,10 +194,12 @@ class Stage(ABC):
         return f"{self.__class__.__name__}(type={self.type!r}, tag={self.tag!r})"
 
     def __or__(self, other: Union[Stage, Pipeline]) -> Pipeline:
-        return Pipeline(self) | other
+        pipeline = Pipeline(self)
+        pipeline |= other
+        return pipeline
 
-    def replace(self, **kwargs: Any) -> Stage:
-        return self.__class__(**dict(self.__dict__, **kwargs))
+    def with_inputs(self, inputs: Sequence[Union[Stage, str]]) -> Stage:
+        return self.__class__(**dict(self.__dict__, inputs=inputs))
 
 
 class Reader(Stage):
