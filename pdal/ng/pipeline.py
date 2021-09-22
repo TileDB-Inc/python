@@ -107,19 +107,19 @@ class Pipeline:
 
                 if isinstance(stage, Filter):
                     if chunk_size is None:
-                        ostream = stage.process_points(cast(PointStream, istream))
+                        ostream = stage.filter_points(cast(PointStream, istream))
                     else:
                         # Filtering an input chunked by chunk_size may result in chunks of
                         # smaller sizes so we need to rechunk it.
-                        ostream = stage.process_chunks(cast(ChunkStream, istream))
+                        ostream = stage.filter_chunks(cast(ChunkStream, istream))
                         ostream = rechunk_arrays(ostream, chunk_size)
                 else:
                     if chunk_size is None:
-                        ostream = stage.process_points(
+                        ostream = stage.write_points(
                             cast(PointStream, istream), buffer_size
                         )
                     else:
-                        ostream = stage.process_chunks(cast(ChunkStream, istream))
+                        ostream = stage.write_chunks(cast(ChunkStream, istream))
             else:
                 assert False
             tagged_streams[stage.tag] = ostream
@@ -243,14 +243,14 @@ class ChunkReader(Reader):
 
 
 class Filter(Stage):
-    def process_points(self, point_stream: PointStream) -> PointStream:
+    def filter_points(self, point_stream: PointStream) -> PointStream:
         return (p for p in map(self._filter_point, point_stream) if p is not None)
 
-    def process_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
+    def filter_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
         return (c for c in map(self._filter_chunk, chunk_stream) if len(c) > 0)
 
     def _filter_chunk(self, chunk: Chunk) -> Chunk:
-        return np.fromiter(self.process_points(iter(chunk)), dtype=chunk.dtype)
+        return np.fromiter(self.filter_points(iter(chunk)), dtype=chunk.dtype)
 
     @abstractmethod
     def _filter_point(self, point: Point) -> Optional[Point]:
@@ -258,14 +258,12 @@ class Filter(Stage):
 
 
 class Writer(Stage):
-    def process_points(
-        self, point_stream: PointStream, buffer_size: int
-    ) -> PointStream:
+    def write_points(self, point_stream: PointStream, buffer_size: int) -> PointStream:
         for chunk in map(np.array, chunked(point_stream, buffer_size)):
             self._write_chunk(chunk)
             yield from chunk
 
-    def process_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
+    def write_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
         for chunk in chunk_stream:
             self._write_chunk(chunk)
             yield chunk
