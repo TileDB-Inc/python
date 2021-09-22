@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pdal.ng
@@ -11,18 +11,17 @@ class EvenFilter(pdal.ng.Filter):
     def __init__(self, dim_idx: int, **kwargs: Any):
         super().__init__(dim_idx=dim_idx, **kwargs)
 
-    def process_points(self, point_stream: pdal.ng.PointStream) -> pdal.ng.PointStream:
-        return (point for point in point_stream if point[self.dim_idx] % 2 == 0)
+    def _filter_point(self, point: pdal.ng.Point) -> Optional[pdal.ng.Point]:
+        return point if point[self.dim_idx] % 2 == 0 else None
 
 
 class NegateFilter(pdal.ng.Filter):
-    def process_points(self, point_stream: pdal.ng.PointStream) -> pdal.ng.PointStream:
+    def _filter_point(self, point: pdal.ng.Point) -> Optional[pdal.ng.Point]:
         # If each point was a regular ndarray or scalar we'd just return `-point`.
         # Since point is a structured array scalar (np.void), we have to operate on every
         # field explicitly. Additionally, there doesn't seem to be a way to create a new
         # structured array scalar directly; instead we create a 0d array and get its item
-        for point in point_stream:
-            yield np.array((-point["X"], -point["Y"], -point["Z"]), point.dtype)[()]
+        return np.array((-point["X"], -point["Y"], -point["Z"]), point.dtype)[()]
 
 
 class StdoutWriter(pdal.ng.Writer):

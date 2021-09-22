@@ -223,15 +223,18 @@ class ChunkReader(Reader):
 
 
 class Filter(Stage):
-    @abstractmethod
     def process_points(self, point_stream: PointStream) -> PointStream:
-        """Filter out or transform points from the given stream"""
+        return (p for p in map(self._filter_point, point_stream) if p is not None)
 
     def process_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
         return (c for c in map(self._filter_chunk, chunk_stream) if len(c) > 0)
 
     def _filter_chunk(self, chunk: Chunk) -> Chunk:
         return np.fromiter(self.process_points(iter(chunk)), dtype=chunk.dtype)
+
+    @abstractmethod
+    def _filter_point(self, point: Point) -> Optional[Point]:
+        """Filter out or transform the given point"""
 
 
 class Writer(Stage):
