@@ -60,14 +60,17 @@ class Pipeline:
     def __iter__(self) -> PointStream:
         return self.process_points()
 
-    def process_points(self, *chunks: Chunk) -> PointStream:
-        return cast(PointStream, self._process(*chunks))
+    def process_points(self, *chunks: Chunk, buffer_size: int = 1000) -> PointStream:
+        return cast(PointStream, self._process(*chunks, buffer_size=buffer_size))
 
     def process_chunks(self, *chunks: Chunk, chunk_size: int) -> ChunkStream:
         return cast(ChunkStream, self._process(*chunks, chunk_size=chunk_size))
 
     def _process(
-        self, *chunks: Chunk, chunk_size: Optional[int] = None
+        self,
+        *chunks: Chunk,
+        chunk_size: Optional[int] = None,
+        buffer_size: Optional[int] = None,
     ) -> Union[PointStream, ChunkStream]:
         if chunks:
             pipeline = Pipeline(ChunkReader(*chunks))
@@ -84,7 +87,8 @@ class Pipeline:
             if isinstance(stage, Reader):
                 assert not istreams
                 if chunk_size is None:
-                    ostream = stage.read_points()
+                    assert buffer_size is not None
+                    ostream = stage.read_points(buffer_size)
                 else:
                     ostream = stage.read_chunks(chunk_size)
             elif isinstance(stage, (Filter, Writer)):
@@ -203,12 +207,19 @@ class Stage(ABC):
 
 
 class Reader(Stage):
-    @abstractmethod
-    def read_points(self) -> PointStream:
+    """Base Reader stage class.
+
+    The default implementations of `read_points` and `read_chunks` call each other;
+    concrete subclasses *must* override at least one of them to avoid infinite recursion.
+    """
+
+    def read_points(self, buffer_size: int) -> PointStream:
         """Return an iterator of points from the underlying source"""
+        return it.chain.from_iterable(self.read_chunks(buffer_size))
 
     def read_chunks(self, chunk_size: int) -> ChunkStream:
-        return map(np.array, chunked(self.read_points(), chunk_size))
+        """Return an iterator of point chunks from the underlying source"""
+        return map(np.array, chunked(self.read_points(chunk_size), chunk_size))
 
 
 class ChunkReader(Reader):
@@ -218,8 +229,8 @@ class ChunkReader(Reader):
     def __init__(self, *chunks: Chunk):
         super().__init__(chunks=chunks)
 
-    def read_points(self) -> PointStream:
-        return it.chain.from_iterable(self.chunks)
+    def read_chunks(self, chunk_size: int) -> ChunkStream:
+        return iter(self.chunks)
 
 
 class Filter(Stage):
