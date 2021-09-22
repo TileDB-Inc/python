@@ -4,18 +4,7 @@ import itertools as it
 import json
 import subprocess
 from abc import ABC, abstractmethod
-from typing import (
-    Any,
-    Dict,
-    Iterator,
-    List,
-    Mapping,
-    Optional,
-    Sequence,
-    Set,
-    Union,
-    cast,
-)
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -61,72 +50,71 @@ class Pipeline:
         return self.process_points()
 
     def process_points(self, *chunks: Chunk, buffer_size: int = 1000) -> PointStream:
-        return cast(PointStream, self._process(*chunks, buffer_size=buffer_size))
-
-    def process_chunks(self, *chunks: Chunk, chunk_size: int) -> ChunkStream:
-        return cast(
-            ChunkStream,
-            self._process(*chunks, buffer_size=chunk_size, chunk_size=chunk_size),
-        )
-
-    def _process(
-        self,
-        *chunks: Chunk,
-        buffer_size: int,
-        chunk_size: Optional[int] = None,
-    ) -> Union[PointStream, ChunkStream]:
-        if chunks:
-            pipeline = Pipeline(ChunkReader(*chunks))
-            pipeline |= self
-        else:
-            pipeline = self
         # For each stage, determine the input streams based on the input tags and call
-        # its {read,process}_{points,chunks} method to compute (lazily) the output stream.
+        # its *_points() method to compute (lazily) the output stream.
         # This output stream can in turn be used as input to subsequent stage(s).
-        tagged_streams: Dict[str, Union[PointStream, ChunkStream]] = {}
-        for stage in pipeline._iter_final_stages():
+        tagged_streams: Dict[str, PointStream] = {}
+        for stage in self.with_inputs(*chunks)._iter_final_stages():
             istreams = tuple(tagged_streams[tag] for tag in stage.inputs)
-            ostream: Union[PointStream, ChunkStream]
             if isinstance(stage, Reader):
                 assert not istreams
-                if chunk_size is None:
-                    ostream = stage.read_points(buffer_size)
-                else:
-                    ostream = stage.read_chunks(chunk_size)
-            elif isinstance(stage, (Filter, Writer)):
-                assert istreams
-                istream: Iterator[np._ArrayOrScalarCommon]
-                if len(istreams) == 1:
-                    istream = istreams[0]
-                else:
-                    istream = it.chain.from_iterable(istreams)
-                    if chunk_size is not None:
-                        # Chaining multiple streams chunked by chunk_size is not
-                        # necessarily chunked by chunk_size so we need to rechunk it
-                        istream = rechunk_arrays(cast(ChunkStream, istream), chunk_size)
-
-                if isinstance(stage, Filter):
-                    if chunk_size is None:
-                        ostream = stage.filter_points(cast(PointStream, istream))
-                    else:
-                        # Filtering an input chunked by chunk_size may result in chunks of
-                        # smaller sizes so we need to rechunk it.
-                        ostream = stage.filter_chunks(cast(ChunkStream, istream))
-                        ostream = rechunk_arrays(ostream, chunk_size)
-                else:
-                    if chunk_size is None:
-                        ostream = stage.write_points(
-                            cast(PointStream, istream), buffer_size
-                        )
-                    else:
-                        ostream = stage.write_chunks(cast(ChunkStream, istream))
+                ostream = stage.read_points(buffer_size)
             else:
-                assert False
+                assert isinstance(stage, (Filter, Writer)) and istreams
+                istream = (
+                    istreams[0]
+                    if len(istreams) == 1
+                    else it.chain.from_iterable(istreams)
+                )
+                ostream = (
+                    stage.filter_points(istream)
+                    if isinstance(stage, Filter)
+                    else stage.write_points(istream, buffer_size)
+                )
             tagged_streams[stage.tag] = ostream
 
         # Once the stream of every stage has been determined, return the stream of the
         # last stage that effectively subsumes all the previous ones
         return tagged_streams[stage.tag]
+
+    def process_chunks(self, *chunks: Chunk, chunk_size: int) -> ChunkStream:
+        # For each stage, determine the input streams based on the input tags and call
+        # its _chunks() method to compute (lazily) the output stream.
+        # This output stream can in turn be used as input to subsequent stage(s).
+        tagged_streams: Dict[str, ChunkStream] = {}
+        for stage in self.with_inputs(*chunks)._iter_final_stages():
+            istreams = tuple(tagged_streams[tag] for tag in stage.inputs)
+            if isinstance(stage, Reader):
+                assert not istreams
+                ostream = stage.read_chunks(chunk_size)
+            else:
+                assert isinstance(stage, (Filter, Writer)) and istreams
+                istream = (
+                    istreams[0]
+                    if len(istreams) == 1
+                    # Chaining multiple streams chunked by chunk_size is not
+                    # necessarily chunked by chunk_size so we need to rechunk it
+                    else rechunk_arrays(it.chain.from_iterable(istreams), chunk_size)
+                )
+                ostream = (
+                    # Filtering an input chunked by chunk_size may result in chunks of
+                    # smaller sizes so we need to rechunk it.
+                    rechunk_arrays(stage.filter_chunks(istream), chunk_size)
+                    if isinstance(stage, Filter)
+                    else stage.write_chunks(istream)
+                )
+            tagged_streams[stage.tag] = ostream
+
+        # Once the stream of every stage has been determined, return the stream of the
+        # last stage that effectively subsumes all the previous ones
+        return tagged_streams[stage.tag]
+
+    def with_inputs(self, *chunks: Chunk) -> Pipeline:
+        if not chunks:
+            return self
+        pipeline = Pipeline(ChunkReader(*chunks))
+        pipeline |= self
+        return pipeline
 
     def _iter_final_stages(self) -> Iterator[Stage]:
         if not self._stages:
