@@ -25,8 +25,9 @@ class NegateFilter(pdal.ng.Filter):
 
 
 class StdoutWriter(pdal.ng.Writer):
-    def _write_point(self, point: pdal.ng.Point) -> None:
-        print(point)
+    def _write_chunk(self, chunk: pdal.ng.Chunk) -> None:
+        for point in chunk:
+            print(point)
 
 
 def main() -> None:

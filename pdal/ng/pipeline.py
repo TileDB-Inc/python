@@ -64,13 +64,16 @@ class Pipeline:
         return cast(PointStream, self._process(*chunks, buffer_size=buffer_size))
 
     def process_chunks(self, *chunks: Chunk, chunk_size: int) -> ChunkStream:
-        return cast(ChunkStream, self._process(*chunks, chunk_size=chunk_size))
+        return cast(
+            ChunkStream,
+            self._process(*chunks, buffer_size=chunk_size, chunk_size=chunk_size),
+        )
 
     def _process(
         self,
         *chunks: Chunk,
+        buffer_size: int,
         chunk_size: Optional[int] = None,
-        buffer_size: Optional[int] = None,
     ) -> Union[PointStream, ChunkStream]:
         if chunks:
             pipeline = Pipeline(ChunkReader(*chunks))
@@ -87,7 +90,6 @@ class Pipeline:
             if isinstance(stage, Reader):
                 assert not istreams
                 if chunk_size is None:
-                    assert buffer_size is not None
                     ostream = stage.read_points(buffer_size)
                 else:
                     ostream = stage.read_chunks(chunk_size)
@@ -102,15 +104,22 @@ class Pipeline:
                         # Chaining multiple streams chunked by chunk_size is not
                         # necessarily chunked by chunk_size so we need to rechunk it
                         istream = rechunk_arrays(cast(ChunkStream, istream), chunk_size)
-                if chunk_size is None:
-                    ostream = stage.process_points(cast(PointStream, istream))
-                else:
-                    ostream = stage.process_chunks(cast(ChunkStream, istream))
-                    # The output stream of a Writer is the same as its input so since the
-                    # input is chunked by chunk_size we don't need to rechunk it. For a
-                    # Filter this is not the case so we need to rechunk it.
-                    if isinstance(stage, Filter):
+
+                if isinstance(stage, Filter):
+                    if chunk_size is None:
+                        ostream = stage.process_points(cast(PointStream, istream))
+                    else:
+                        # Filtering an input chunked by chunk_size may result in chunks of
+                        # smaller sizes so we need to rechunk it.
+                        ostream = stage.process_chunks(cast(ChunkStream, istream))
                         ostream = rechunk_arrays(ostream, chunk_size)
+                else:
+                    if chunk_size is None:
+                        ostream = stage.process_points(
+                            cast(PointStream, istream), buffer_size
+                        )
+                    else:
+                        ostream = stage.process_chunks(cast(ChunkStream, istream))
             else:
                 assert False
             tagged_streams[stage.tag] = ostream
@@ -249,20 +258,18 @@ class Filter(Stage):
 
 
 class Writer(Stage):
-    def process_points(self, point_stream: PointStream) -> PointStream:
-        for point in point_stream:
-            self._write_point(point)
-            yield point
+    def process_points(
+        self, point_stream: PointStream, buffer_size: int
+    ) -> PointStream:
+        for chunk in map(np.array, chunked(point_stream, buffer_size)):
+            self._write_chunk(chunk)
+            yield from chunk
 
     def process_chunks(self, chunk_stream: ChunkStream) -> ChunkStream:
         for chunk in chunk_stream:
             self._write_chunk(chunk)
             yield chunk
 
-    def _write_chunk(self, chunk: Chunk) -> None:
-        for point in chunk:
-            self._write_point(point)
-
     @abstractmethod
-    def _write_point(self, point: Point) -> None:
-        """Write the given point to the underlying sink"""
+    def _write_chunk(self, chunk: Chunk) -> None:
+        """Write the given chunk of points to the underlying sink"""
