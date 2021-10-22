@@ -1,6 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
+#include <pybind11/numpy.h>
 
 #include <nlohmann/json.hpp>
 
@@ -23,32 +24,30 @@
 namespace py = pybind11;
 namespace nl = nlohmann;
 
-
-namespace pybind11 {
-    namespace detail {
-        using namespace pdal::python;
-
-        template<>
-        struct type_caster<PyArrayObject> {
-        public:
-            PYBIND11_TYPE_CASTER(PyArrayObject, _("PyArrayObject"));
-
-            bool load(handle src, bool) {
-                PyObject* source = src.ptr();
-                PyArrayObject* tmp = (PyArrayObject*) source;
-                if (!tmp)
-                    return false;
-                value = *tmp;
-                Py_DECREF(&tmp);
-                return !(PyErr_Occurred());
-            }
-
-//            static handle cast(Array src, return_value_policy, handle) {
-//                return PyNullImporter_Type;
+//namespace pybind11 {
+//    namespace detail {
+//        using namespace pdal::python;
+//
+//        template<> struct type_caster<PyObject*> {
+//        public:
+//            PYBIND11_TYPE_CASTER(PyObject*, _("PyObject*"));
+//
+//            bool load(handle src, bool) {
+//                _object* source = src.ptr();
+//                PyObject* tmp = (PyObject*) source;
+//                if (!tmp)
+//                    return false;
+//                value = tmp;
+//                Py_DECREF(&tmp);
+//                return !(PyErr_Occurred());
 //            }
-        };
-    }
-}
+//
+////            static handle cast(Array src, return_value_policy, handle) {
+////                return PyNullImporter_Type;
+////            }
+//        };
+//    }
+//}
 
 namespace pdal {
     using namespace pybind11::literals;
@@ -85,21 +84,21 @@ namespace pdal {
         PipelineExecutor* _executor;
         std::vector <std::shared_ptr<Array>> _inputs;
 
-        Pipeline() : _executor(nullptr)
-        {};
+        Pipeline()
+        {}
 
         virtual ~Pipeline() {
             _inputs.clear();
-        };
+        }
 
         Pipeline(const Pipeline &pipeline) : _inputs(pipeline._inputs) {}
 
         // props
-        void setInputs(std::vector<Array*> ndarrays) {
+        void setInputs(std::vector<py::array*> ndarrays) {
             _inputs.clear();
-            for (auto &arr: ndarrays)
+            for (auto& arr: ndarrays)
             {
-                _inputs.push_back(std::make_shared<Array>(arr->));
+                _inputs.push_back(std::make_shared<Array>((PyArrayObject*) arr));
             }
             _delete_executor();
         }
@@ -133,11 +132,12 @@ namespace pdal {
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
             std::vector <std::shared_ptr<Array>> output;
-            for (const auto &view: executor->getManagerConst().views()) {
-                PyArrayObject* arr(python::viewToNumpyArray(view));
-                Array ab(arr);
-                output.push_back(std::shared_ptr<Array>(&ab));
-            }
+            for (const auto& arr: _inputs)
+                output.push_back(arr);
+//            for (const auto &view: executor->getManagerConst().views()) {
+//                PyArrayObject* arr(python::viewToNumpyArray(view));
+//                output.push_back(std::make_shared<Array>((PyArrayObject*) arr));
+//            }
             return output;
         }
 
@@ -236,7 +236,6 @@ namespace pdal {
     PYBIND11_MODULE(libpybind11, m)
     {
     m.doc() = "blank funcs";
-    py::bind_vector<std::vector<PyObject*>>(m, "ArrayList");
     py::class_<Pipeline, PyPipeline>(m, "Pipeline")
         .def(py::init<>())
 //        .def("__copy__()", [](const Pipeline &self){
@@ -247,8 +246,8 @@ namespace pdal {
         .def_property_readonly("metadata", &Pipeline::metadata)
         .def_property("loglevel", &Pipeline::getLoglevel, &Pipeline::l_setLogLevel)
         .def_property_readonly("log", &Pipeline::log)
-        .def_property_readonly("schema", &Pipeline::schema);
-//        .def_property_readonly("arrays", &Pipeline::arrays)
+        .def_property_readonly("schema", &Pipeline::schema)
+        .def_property_readonly("arrays", &Pipeline::arrays);
 //        .def_property_readonly("meshes", &Pipeline::meshes)
 //        .def("_json", &Pipeline::_json);
     m.def("getInfoPB11", &getInfoPB11, "getInfo");
