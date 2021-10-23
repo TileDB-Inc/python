@@ -1,5 +1,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/pytypes.h>
+#include <pybind11/iostream.h>
+#include <pybind11/eval.h>
+#include <pybind11/cast.h>
+
 #include <pybind11/stl_bind.h>
 #include <pybind11/numpy.h>
 #include "nlohmann/json.hpp"
@@ -16,8 +21,6 @@
 #include "PyPipeline.hpp"
 
 #include "Python/Python.h"
-// only here for intellisense; already included from PyArray
-#include <numpy/ndarraytypes.h>
 
 
 
@@ -94,11 +97,19 @@ namespace pdal {
         Pipeline(const Pipeline &pipeline) : _inputs(pipeline._inputs) {}
 
         // props
-        void setInputs(std::vector<py::array*> ndarrays) {
+        void setInputs(std::vector<PyObject*> ndarrays) {
             _inputs.clear();
             for (auto& arr: ndarrays)
             {
-                _inputs.push_back(std::make_shared<Array>((PyArrayObject*) arr));
+                try {
+//                    PyObject* arrptr = arr.cast<PyObject *>();
+                    std::shared_ptr<Array> arr_ptr = std::make_shared<Array>((PyArrayObject*) arr);
+                    _inputs.push_back(std::move(arr_ptr));
+                } catch (py::error_already_set &eas) {
+                    eas.discard_as_unraisable(__func__ );
+                } catch (const std::exception &e) {
+                    std::cout << e.what() << std::endl;
+                }
             }
             _delete_executor();
         }
@@ -132,12 +143,10 @@ namespace pdal {
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
             std::vector <std::shared_ptr<Array>> output;
-            for (const auto& arr: _inputs)
-                output.push_back(arr);
-//            for (const auto &view: executor->getManagerConst().views()) {
-//                PyArrayObject* arr(python::viewToNumpyArray(view));
-//                output.push_back(std::make_shared<Array>((PyArrayObject*) arr));
-//            }
+            for (const auto &view: executor->getManagerConst().views()) {
+                PyArrayObject* arr(python::viewToNumpyArray(view));
+                output.push_back(std::make_shared<Array>((PyArrayObject*) arr));
+            }
             return output;
         }
 
@@ -194,7 +203,7 @@ namespace pdal {
 //            );
 //        }
 
-        virtual nl::json _json() {
+        virtual nl::json _json(){
             return nl::json("a");
         }
 
@@ -209,6 +218,14 @@ namespace pdal {
         }
 
         PipelineExecutor *_get_executor() {
+            if (_executor == nullptr)
+            {
+                nl::json json = _json();
+                _executor = new PipelineExecutor(json);
+                readPipeline(_executor, json);
+                addArrayReaders(_executor, _inputs);
+                json = NULL;
+            }
             return _executor;
         }
 
@@ -236,20 +253,21 @@ namespace pdal {
     PYBIND11_MODULE(libpybind11, m)
     {
     m.doc() = "blank funcs";
+//    py::bind_vector<std::vector<PyObject*>>(m, "List");
     py::class_<Pipeline, PyPipeline>(m, "Pipeline")
         .def(py::init<>())
 //        .def("__copy__()", [](const Pipeline &self){
 //            return Pipeline(self);
 //        })
-        .def_property("inputs", nullptr, &Pipeline::setInputs)
+        .def("inputs", &Pipeline::setInputs)
         .def_property_readonly("pipeline", &Pipeline::pipeline)
         .def_property_readonly("metadata", &Pipeline::metadata)
         .def_property("loglevel", &Pipeline::getLoglevel, &Pipeline::l_setLogLevel)
         .def_property_readonly("log", &Pipeline::log)
         .def_property_readonly("schema", &Pipeline::schema)
-        .def_property_readonly("arrays", &Pipeline::arrays);
+        .def_property_readonly("arrays", &Pipeline::arrays)
 //        .def_property_readonly("meshes", &Pipeline::meshes)
-//        .def("_json", &Pipeline::_json);
+        .def("_json", &Pipeline::_json);
     m.def("getInfoPB11", &getInfoPB11, "getInfo");
     m.def("getDimensionsPB11", &getDimensionsPB11, "getDimensions");
     m.def("infer_reader_driver", &StageFactory::inferReaderDriver,
