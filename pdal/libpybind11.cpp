@@ -2,8 +2,8 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 #include <pybind11/numpy.h>
-
-#include <nlohmann/json.hpp>
+#include "nlohmann/json.hpp"
+#include "pybind11_json/pybind11_json.hpp"
 
 #include <pdal/pdal_config.hpp>
 #include <pdal/StageFactory.hpp>
