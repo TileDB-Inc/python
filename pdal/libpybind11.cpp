@@ -122,7 +122,6 @@ namespace pdal {
             return output;
         }
 
-    protected:
         virtual std::string _json() = 0;
 
         bool _has_inputs() { return !_inputs.empty(); }
@@ -172,13 +171,6 @@ namespace pdal {
 
     };
 
-    class PipelinePublic : public Pipeline {
-    public:
-        using Pipeline::_json;
-        using Pipeline::_has_inputs;
-        using Pipeline::_del_executor;
-    };
-
     PYBIND11_MODULE(libpybind11, m)
     {
     m.doc() = "Pipeline class";
@@ -195,9 +187,9 @@ namespace pdal {
         .def_property_readonly("metadata", &Pipeline::metadata)
         .def_property_readonly("arrays", &Pipeline::arrays)
         .def_property_readonly("meshes", &Pipeline::meshes)
-        .def("_json", &PipelinePublic::_json)
-        .def("_has_inputs", &PipelinePublic::_has_inputs)
-        .def("_del_executor", &PipelinePublic::_del_executor);
+        .def_property_readonly("_json", &Pipeline::_json)
+        .def_property_readonly("_has_inputs", &Pipeline::_has_inputs)
+        .def("_del_executor", &Pipeline::_del_executor);
     m.def("getInfo", &getInfo, "getInfo");
     m.def("getDimensions", &getDimensions, "getDimensions");
     m.def("infer_reader_driver", &StageFactory::inferReaderDriver,
