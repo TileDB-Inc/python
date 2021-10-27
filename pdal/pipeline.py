@@ -3,6 +3,7 @@ from __future__ import annotations
 import glob
 import json
 import logging
+import os
 from typing import Any, Container, Dict, Iterator, List, Optional, Sequence, Union, cast
 
 import numpy as np
@@ -12,8 +13,11 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     Mesh = None
 
-from . import libpdalpython
-from . import libpybind11
+_USE_PYBIND11 = os.getenv("PDAL_PYTHON_PYBIND11")
+if _USE_PYBIND11:
+    from . import libpybind11 as libpdalpython
+else:
+    from . import libpdalpython
 
 LogLevelToPDAL = {
     logging.ERROR: 0,
@@ -24,7 +28,7 @@ LogLevelToPDAL = {
 LogLevelFromPDAL = {v: k for k, v in LogLevelToPDAL.items()}
 
 
-class Pipeline(libpybind11.Pipeline):
+class Pipeline(libpdalpython.Pipeline):
     def __init__(
         self,
         spec: Union[None, str, Sequence[Stage]] = None,
