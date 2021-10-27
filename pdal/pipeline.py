@@ -13,6 +13,7 @@ except ModuleNotFoundError:  # pragma: no cover
     Mesh = None
 
 from . import libpdalpython
+from . import libpybind11
 
 LogLevelToPDAL = {
     logging.ERROR: 0,
@@ -23,7 +24,7 @@ LogLevelToPDAL = {
 LogLevelFromPDAL = {v: k for k, v in LogLevelToPDAL.items()}
 
 
-class Pipeline(libpdalpython.Pipeline):
+class Pipeline(libpybind11.Pipeline):
     def __init__(
         self,
         spec: Union[None, str, Sequence[Stage]] = None,
