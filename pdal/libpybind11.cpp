@@ -1,49 +1,30 @@
-#include <memory>
 #include <pybind11/pybind11.h>
-#include <pybind11/attr.h>
-#include <pybind11/buffer_info.h>
-#include <pybind11/complex.h>
-#include <pybind11/embed.h>
-#include <pybind11/functional.h>
-#include <pybind11/operators.h>
-#include <pybind11/options.h>
-
-#include <pybind11/stl.h>
-#include <pybind11/pytypes.h>
-#include <pybind11/iostream.h>
-#include <pybind11/eval.h>
 #include <pybind11/cast.h>
-
-#include <pybind11/stl_bind.h>
+#include <pybind11/stl.h>
 #include <pybind11/numpy.h>
-#include "nlohmann/json.hpp"
-#include "pybind11_json/pybind11_json.hpp"
 
 #include <pdal/pdal_config.hpp>
 #include <pdal/StageFactory.hpp>
-#include <pdal/Mesh.hpp>
-#include <pdal/PointView.hpp>
-#include <pdal/PipelineManager.hpp>
 #include <pdal/PipelineExecutor.hpp>
-#include "PyDimension.hpp"
+
 #include "PyArray.hpp"
+#include "PyDimension.hpp"
 #include "PyPipeline.hpp"
 
 namespace py = pybind11;
 
 namespace pdal {
 
-    class PipelineExecShareable : public PipelineExecutor, public std::enable_shared_from_this<PipelineExecShareable>
-    {
+    class PipelineExecShareable :
+        public PipelineExecutor,
+        public std::enable_shared_from_this<PipelineExecShareable> {
     public:
         PipelineExecShareable(std::string const& json) : PipelineExecutor(json) {}
     };
 
-
     using namespace pybind11::literals;
     using namespace pybind11::detail;
     using namespace pdal::python;
-
 
     py::object getInfo() {
         using namespace Config;
@@ -64,33 +45,27 @@ namespace pdal {
         std::vector<py::dict> dims;
         for (const auto& dim: getValidDimensions())
         {
-            py::dict d("name"_a=dim.name, "description"_a=dim.description, "dtype"_a=dtype(dim.type + std::to_string(dim.size)));
+            py::dict d(
+                "name"_a=dim.name,
+                "description"_a=dim.description,
+                "dtype"_a=dtype(dim.type + std::to_string(dim.size))
+            );
             dims.push_back(std::move(d));
         }
         return dims;
     };
 
-
-    class Pipeline
-    {
+    class Pipeline {
     public:
-        std::shared_ptr<PipelineExecShareable> _executor;
-        std::vector <std::shared_ptr<Array>> _inputs;
-        int _loglevel;
-
         Pipeline() {}
 
         Pipeline(const Pipeline&) {}
 
-        virtual ~Pipeline() {
-            _inputs.clear();
-        }
+        virtual ~Pipeline() { _inputs.clear(); }
 
         virtual std::shared_ptr<Pipeline> clone() const = 0;
 
-        int64_t execute() {
-            return _get_executor()->execute();
-        }
+        int64_t execute() { return _get_executor()->execute(); }
 
         // writable props
 
@@ -106,9 +81,7 @@ namespace pdal {
             _del_executor();
         }
 
-        int getLoglevel() {
-            return _loglevel;
-        }
+        int getLoglevel() { return _loglevel; }
 
         void setLogLevel(int level) {
             _loglevel = level;
@@ -117,21 +90,13 @@ namespace pdal {
 
         // readable props
 
-        std::string log() {
-            return _get_executor()->getLog();
-        }
+        std::string log() { return _get_executor()->getLog(); }
 
-        std::string schema() {
-            return _get_executor()->getSchema();
-        }
+        std::string schema() { return _get_executor()->getSchema(); }
 
-        std::string pipeline() {
-            return _get_executor()->getPipeline();
-        }
+        std::string pipeline() { return _get_executor()->getPipeline(); }
 
-        std::string metadata() {
-            return _get_executor()->getMetadata();
-        }
+        std::string metadata() { return _get_executor()->getMetadata(); }
 
         std::vector<std::shared_ptr<Array>> arrays() {
             PipelineExecShareable* executor = _get_executor();
@@ -158,19 +123,19 @@ namespace pdal {
         }
 
     protected:
-
         virtual std::string _json() = 0;
 
-        bool _has_inputs() {
-            return !_inputs.empty();
-        }
+        bool _has_inputs() { return !_inputs.empty(); }
 
-        void _del_executor() {
-            _executor.reset();
-        }
+        void _del_executor() { _executor.reset(); }
 
-        PipelineExecShareable* _get_executor(bool set_new = true) {
-            if (!_executor && set_new)
+    private:
+        std::shared_ptr<PipelineExecShareable> _executor;
+        std::vector <std::shared_ptr<Array>> _inputs;
+        int _loglevel;
+
+        PipelineExecShareable* _get_executor() {
+            if (!_executor)
             {
                 _executor = std::make_shared<PipelineExecShareable>(_json());
                 _executor.get()->setLogLevel(_loglevel);
@@ -179,7 +144,6 @@ namespace pdal {
             }
             return _executor.get();
         }
-
     };
 
     class PyPipeline : public Pipeline {
@@ -208,16 +172,12 @@ namespace pdal {
 
     };
 
-    class PipelinePublic : public Pipeline
-    {
+    class PipelinePublic : public Pipeline {
     public:
         using Pipeline::_json;
         using Pipeline::_has_inputs;
         using Pipeline::_del_executor;
-        using Pipeline::_get_executor;
     };
-
-
 
     PYBIND11_MODULE(libpybind11, m)
     {
@@ -237,8 +197,7 @@ namespace pdal {
         .def_property_readonly("meshes", &Pipeline::meshes)
         .def("_json", &PipelinePublic::_json)
         .def("_has_inputs", &PipelinePublic::_has_inputs)
-        .def("_del_executor", &PipelinePublic::_del_executor)
-        .def("_get_executor", &PipelinePublic::_get_executor);
+        .def("_del_executor", &PipelinePublic::_del_executor);
     m.def("getInfo", &getInfo, "getInfo");
     m.def("getDimensions", &getDimensions, "getDimensions");
     m.def("infer_reader_driver", &StageFactory::inferReaderDriver,
