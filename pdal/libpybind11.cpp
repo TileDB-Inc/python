@@ -1,4 +1,13 @@
+#include <memory>
 #include <pybind11/pybind11.h>
+#include <pybind11/attr.h>
+#include <pybind11/buffer_info.h>
+#include <pybind11/complex.h>
+#include <pybind11/embed.h>
+#include <pybind11/functional.h>
+#include <pybind11/operators.h>
+#include <pybind11/options.h>
+
 #include <pybind11/stl.h>
 #include <pybind11/pytypes.h>
 #include <pybind11/iostream.h>
@@ -20,45 +29,18 @@
 #include "PyArray.hpp"
 #include "PyPipeline.hpp"
 
-#include "Python/Python.h"
-
-
-
 namespace py = pybind11;
-namespace nl = nlohmann;
-
-//namespace pybind11 {
-//    namespace detail {
-//        using namespace pdal::python;
-//
-//        template<> struct type_caster<PyObject*> {
-//        public:
-//            PYBIND11_TYPE_CASTER(PyObject*, _("PyObject*"));
-//
-//            bool load(handle src, bool) {
-//                _object* source = src.ptr();
-//                PyObject* tmp = (PyObject*) source;
-//                if (!tmp)
-//                    return false;
-//                value = tmp;
-//                Py_DECREF(&tmp);
-//                return !(PyErr_Occurred());
-//            }
-//
-////            static handle cast(Array src, return_value_policy, handle) {
-////                return PyNullImporter_Type;
-////            }
-//        };
-//    }
-//}
 
 namespace pdal {
+
+
     using namespace pybind11::literals;
+    using namespace pybind11::detail;
     using namespace pdal::python;
 
-    py::object getInfoPB11() {
+    py::object getInfo() {
         using namespace Config;
-        return py::make_simple_namespace(
+        return py::module_::import("types").attr("SimpleNamespace")(
                 "version"_a = versionString(),
                 "major"_a = versionMajor(),
                 "minor"_a = versionMinor(),
@@ -69,7 +51,7 @@ namespace pdal {
         );
     };
 
-    std::vector<py::dict> getDimensionsPB11() {
+    std::vector<py::dict> getDimensions() {
         py::object np = py::module_::import("numpy");
         py::object dtype = np.attr("dtype");
         std::vector<py::dict> dims;
@@ -81,37 +63,59 @@ namespace pdal {
         return dims;
     };
 
-    // pipeline classes
-    class Pipeline {
-    public:
-        PipelineExecutor* _executor;
-        std::vector <std::shared_ptr<Array>> _inputs;
 
-        Pipeline()
-        {}
+    class Pipeline
+    {
+    public:
+        std::unique_ptr<PipelineExecutor> _executor;
+        std::vector <std::shared_ptr<Array>> _inputs;
+        int _loglevel;
+
+        Pipeline() {}
+
+        Pipeline(const Pipeline&) {}
 
         virtual ~Pipeline() {
             _inputs.clear();
         }
 
-        Pipeline(const Pipeline &pipeline) : _inputs(pipeline._inputs) {}
+        virtual std::shared_ptr<Pipeline> clone() const = 0;
 
-        // props
-        void setInputs(std::vector<PyObject*> ndarrays) {
+        int64_t execute() {
+            return _get_executor()->execute();
+        }
+
+        // writable props
+
+        void setInputs(py::list ndarrays) {
             _inputs.clear();
-            for (auto& arr: ndarrays)
+            for (py::handle arr: ndarrays)
             {
-                try {
-//                    PyObject* arrptr = arr.cast<PyObject *>();
-                    std::shared_ptr<Array> arr_ptr = std::make_shared<Array>((PyArrayObject*) arr);
-                    _inputs.push_back(std::move(arr_ptr));
-                } catch (py::error_already_set &eas) {
-                    eas.discard_as_unraisable(__func__ );
-                } catch (const std::exception &e) {
-                    std::cout << e.what() << std::endl;
-                }
+                    py::array py_array = py::cast<py::array>(arr);
+                    PyObject* pyobj_array = py_array.ptr();
+                    std::shared_ptr<Array> array = std::make_shared<Array>((PyArrayObject*) pyobj_array);
+                    _inputs.push_back(std::move(array));
             }
-            _delete_executor();
+            _del_executor();
+        }
+
+        int getLoglevel() {
+            return _loglevel;
+        }
+
+        void setLogLevel(int level) {
+            _loglevel = level;
+            _del_executor();
+        }
+
+        // readable props
+
+        std::string log() {
+            return _get_executor()->getLog();
+        }
+
+        std::string schema() {
+            return _get_executor()->getSchema();
         }
 
         std::string pipeline() {
@@ -122,24 +126,8 @@ namespace pdal {
             return _get_executor()->getMetadata();
         }
 
-        int getLoglevel() {
-            return _get_executor()->getLogLevel();
-        }
-
-        void l_setLogLevel(int level) {
-            _get_executor()->setLogLevel(level);
-        }
-
-        std::string log() {
-            return _get_executor()->getLog();
-        }
-
-        nl::json schema() {
-            return nl::json(_get_executor()->getSchema());
-        }
-
         std::vector<std::shared_ptr<Array>> arrays() {
-            PipelineExecutor *executor = _get_executor();
+            std::shared_ptr<PipelineExecutor> executor = _get_executor();
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
             std::vector <std::shared_ptr<Array>> output;
@@ -150,126 +138,102 @@ namespace pdal {
             return output;
         }
 
-        std::vector <PyArrayObject> meshes() {
-            PipelineExecutor *executor = _get_executor();
+        std::vector<std::shared_ptr<Array>> meshes() {
+            std::shared_ptr<PipelineExecutor> executor = _get_executor();
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
-            std::vector <PyArrayObject> output;
+            std::vector<std::shared_ptr<Array>> output;
             for (const auto &view: executor->getManagerConst().views()) {
                 PyArrayObject *arr(python::meshToNumpyArray(view->mesh()));
-                output.push_back(*arr);
+                output.push_back(std::make_shared<Array>((PyArrayObject*) arr));
             }
             return output;
         }
 
-        int64_t execute() {
-            return _get_executor()->execute();
+    protected:
+
+        virtual std::string _json() = 0;
+
+        bool _has_inputs() {
+            return !_inputs.empty();
         }
 
-        bool validate() {
-            return _get_executor()->validate();
+        void _del_executor() {
+            _executor.reset();
         }
 
-//        Mesh get_meshio(size_t idx)
-//        {
-//            try
-//            {
-//                py::object Mesh = py::module_::import("Mesh");
-//            }
-//            catch (py::error_already_set &e)
-//            {
-//                if (e.matches(PyExc_ModuleNotFoundError))
-//                {
-//                    // next line may not be necessary
-//                    e.discard_as_unraisable(__func__);
-//                    throw std::runtime_error("The get_meshio function can only be used if you have installed meshio. Try pip install meshio");
-//                }
-//                else
-//                {
-//                    throw;
-//                }
-//            };
-//            python::Array array = arrays()[idx];
-//            Mesh mesh = meshes()[idx];
-//            if (meshes.size() == 0)
-//            {
-//                return NULL;
-//            }
-//            py::object np = py::module_::import("numpy");
-//            py::object stack = np.attr("stack");
-//            return Mesh(
-//                    stack(py::make_tuple(array["X"], array["Y"], array["Z"]), 1),
-//                    py::make_tuple(py::make_tuple("triangle", stack(py::make_tuple(mesh["A"], mesh["B"], mesh["C"]), 1)))
-//            );
-//        }
-
-        virtual nl::json _json(){
-            return nl::json("a");
-        }
-
-        size_t _num_inputs() {
-            return _inputs.size();
-        }
-
-        void _delete_executor() {
-            if (_executor != nullptr) {
-                _executor = nullptr;
-            }
-        }
-
-        PipelineExecutor *_get_executor() {
-            if (_executor == nullptr)
+        std::shared_ptr<PipelineExecutor> _get_executor(bool set_new = false) {
+            if (!_executor && set_new)
             {
-                nl::json json = _json();
-                _executor = new PipelineExecutor(json);
-                readPipeline(_executor, json);
-                addArrayReaders(_executor, _inputs);
-                json = NULL;
+                PipelineExecutor* executor = new PipelineExecutor(_json());
+                executor->setLogLevel(_loglevel);
+                readPipeline(executor, _json());
+                addArrayReaders(executor, _inputs);
+                _executor.reset(executor);
             }
-            return _executor;
+            return std::make_shared<PipelineExecutor>(_json());
         }
 
     };
 
-        class PyPipeline : public Pipeline {
-        public:
-            using Pipeline::Pipeline;
+    class PyPipeline : public Pipeline {
+    public:
+        using Pipeline::Pipeline;
 
-            using Pipeline::_executor;
-            using Pipeline::_inputs;
+        PyPipeline(const Pipeline& pipeline) : Pipeline(pipeline) {}
 
-            nl::json _json() override {
-                PYBIND11_OVERRIDE(
-                        nl::json,
-                        Pipeline,
-                        _json,
-                );
-            }
+        std::shared_ptr<Pipeline> clone() const override {
+            auto self = py::cast(this);
+            auto cloned = self.attr("clone")();
 
-        };
+            auto keep_python = std::make_shared<py::object>(cloned);
+            auto ptr = cloned.cast<PyPipeline*>();
+
+            return std::shared_ptr<Pipeline>(keep_python, ptr);
+        }
+
+        std::string _json() override {
+            PYBIND11_OVERRIDE_PURE(
+                    std::string,
+                    Pipeline,
+                    _json,
+            );
+        }
+
+    };
+
+    class PipelinePublic : public Pipeline
+    {
+    public:
+        using Pipeline::_json;
+        using Pipeline::_has_inputs;
+        using Pipeline::_del_executor;
+        using Pipeline::_get_executor;
+    };
 
 
 
     PYBIND11_MODULE(libpybind11, m)
     {
-    m.doc() = "blank funcs";
-//    py::bind_vector<std::vector<PyObject*>>(m, "List");
-    py::class_<Pipeline, PyPipeline>(m, "Pipeline")
+    m.doc() = "Pipeline class";
+    py::class_<Pipeline, PyPipeline, std::shared_ptr<Pipeline>>(m, "Pipeline", py::dynamic_attr())
         .def(py::init<>())
-//        .def("__copy__()", [](const Pipeline &self){
-//            return Pipeline(self);
-//        })
+        .def(py::init<const Pipeline&>())
+        .def("execute", &Pipeline::execute)
         .def("inputs", &Pipeline::setInputs)
-        .def_property_readonly("pipeline", &Pipeline::pipeline)
-        .def_property_readonly("metadata", &Pipeline::metadata)
-        .def_property("loglevel", &Pipeline::getLoglevel, &Pipeline::l_setLogLevel)
+        .def_property("loglevel", &Pipeline::getLoglevel, &Pipeline::setLogLevel)
         .def_property_readonly("log", &Pipeline::log)
         .def_property_readonly("schema", &Pipeline::schema)
+        .def_property_readonly("pipeline", &Pipeline::pipeline)
+        .def_property_readonly("metadata", &Pipeline::metadata)
         .def_property_readonly("arrays", &Pipeline::arrays)
-//        .def_property_readonly("meshes", &Pipeline::meshes)
-        .def("_json", &Pipeline::_json);
-    m.def("getInfoPB11", &getInfoPB11, "getInfo");
-    m.def("getDimensionsPB11", &getDimensionsPB11, "getDimensions");
+        .def_property_readonly("meshes", &Pipeline::meshes)
+        .def("_json", &PipelinePublic::_json)
+        .def("_has_inputs", &PipelinePublic::_has_inputs)
+        .def("_del_executor", &PipelinePublic::_del_executor)
+        .def("_get_executor", &PipelinePublic::_get_executor);
+    m.def("getInfo", &getInfo, "getInfo");
+    m.def("getDimensions", &getDimensions, "getDimensions");
     m.def("infer_reader_driver", &StageFactory::inferReaderDriver,
     "driver"_a);
     m.def("infer_writer_driver", &StageFactory::inferWriterDriver,
