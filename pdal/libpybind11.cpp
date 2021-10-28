@@ -13,10 +13,7 @@
 namespace py = pybind11;
 
 namespace pdal {
-
-    using namespace pybind11::literals;
-    using namespace pybind11::detail;
-    using namespace pdal::python;
+    using namespace py::literals;
 
     py::object getInfo() {
         using namespace Config;
@@ -49,8 +46,6 @@ namespace pdal {
 
     class Pipeline {
     public:
-        Pipeline() {}
-
         virtual ~Pipeline() { _inputs.clear(); }
 
         int64_t execute() { return _get_executor()->execute(); }
@@ -61,17 +56,14 @@ namespace pdal {
             _inputs.clear();
             for (const auto& ndarray: ndarrays) {
                 PyArrayObject* ndarray_ptr = (PyArrayObject*)ndarray.ptr();
-                _inputs.push_back(std::make_shared<Array>(ndarray_ptr));
+                _inputs.push_back(std::make_shared<pdal::python::Array>(ndarray_ptr));
             }
             _del_executor();
         }
 
         int getLoglevel() { return _loglevel; }
 
-        void setLogLevel(int level) {
-            _loglevel = level;
-            _del_executor();
-        }
+        void setLogLevel(int level) { _loglevel = level; _del_executor(); }
 
         // readable props
 
@@ -89,7 +81,7 @@ namespace pdal {
                 throw std::runtime_error("call execute() before fetching arrays");
             std::vector<py::array> output;
             for (const auto &view: executor->getManagerConst().views()) {
-                PyArrayObject* arr(viewToNumpyArray(view));
+                PyArrayObject* arr(pdal::python::viewToNumpyArray(view));
                 output.push_back(py::reinterpret_steal<py::array>((PyObject*)arr));
             }
             return output;
@@ -101,7 +93,7 @@ namespace pdal {
                 throw std::runtime_error("call execute() before fetching arrays");
             std::vector<py::array> output;
             for (const auto &view: executor->getManagerConst().views()) {
-                PyArrayObject* arr(meshToNumpyArray(view->mesh()));
+                PyArrayObject* arr(pdal::python::meshToNumpyArray(view->mesh()));
                 output.push_back(py::reinterpret_steal<py::array>((PyObject*)arr));
             }
             return output;
@@ -119,7 +111,7 @@ namespace pdal {
 
     private:
         std::shared_ptr<PipelineExecutor> _executor;
-        std::vector <std::shared_ptr<Array>> _inputs;
+        std::vector <std::shared_ptr<pdal::python::Array>> _inputs;
         int _loglevel;
 
         PipelineExecutor* _get_executor() {
@@ -128,8 +120,8 @@ namespace pdal {
                 std::string json = _get_json();
                 PipelineExecutor* executor = new PipelineExecutor(json);
                 executor->setLogLevel(_loglevel);
-                readPipeline(executor, json);
-                addArrayReaders(executor, _inputs);
+                pdal::python::readPipeline(executor, json);
+                pdal::python::addArrayReaders(executor, _inputs);
                 _executor.reset(executor);
             }
             return _executor.get();
@@ -153,12 +145,10 @@ namespace pdal {
         .def("_copy_inputs", &Pipeline::_copy_inputs)
         .def("_get_json", &Pipeline::_get_json)
         .def("_del_executor", &Pipeline::_del_executor);
-    m.def("getInfo", &getInfo, "getInfo");
-    m.def("getDimensions", &getDimensions, "getDimensions");
-    m.def("infer_reader_driver", &StageFactory::inferReaderDriver,
-    "driver"_a);
-    m.def("infer_writer_driver", &StageFactory::inferWriterDriver,
-    "driver"_a);
+    m.def("getInfo", &getInfo);
+    m.def("getDimensions", &getDimensions);
+    m.def("infer_reader_driver", &StageFactory::inferReaderDriver);
+    m.def("infer_writer_driver", &StageFactory::inferWriterDriver);
     };
 
 }; // namespace pdal
