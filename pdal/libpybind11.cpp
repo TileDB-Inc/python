@@ -1,5 +1,4 @@
 #include <pybind11/pybind11.h>
-#include <pybind11/cast.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 
@@ -58,14 +57,11 @@ namespace pdal {
 
         // writable props
 
-        void setInputs(py::list ndarrays) {
+        void setInputs(std::vector<py::array> ndarrays) {
             _inputs.clear();
-            for (py::handle arr: ndarrays)
-            {
-                    py::array py_array = py::cast<py::array>(arr);
-                    PyObject* pyobj_array = py_array.ptr();
-                    std::shared_ptr<Array> array = std::make_shared<Array>((PyArrayObject*) pyobj_array);
-                    _inputs.push_back(std::move(array));
+            for (const auto& ndarray: ndarrays) {
+                PyArrayObject* ndarray_ptr = (PyArrayObject*)ndarray.ptr();
+                _inputs.push_back(std::make_shared<Array>(ndarray_ptr));
             }
             _del_executor();
         }
@@ -87,26 +83,26 @@ namespace pdal {
 
         std::string metadata() { return _get_executor()->getMetadata(); }
 
-        std::vector<std::shared_ptr<Array>> arrays() {
+        std::vector<py::array> arrays() {
             PipelineExecutor* executor = _get_executor();
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
-            std::vector <std::shared_ptr<Array>> output;
+            std::vector<py::array> output;
             for (const auto &view: executor->getManagerConst().views()) {
-                PyArrayObject* arr(python::viewToNumpyArray(view));
-                output.push_back(std::make_shared<Array>((PyArrayObject*) arr));
+                PyArrayObject* arr(viewToNumpyArray(view));
+                output.push_back(py::reinterpret_steal<py::array>((PyObject*)arr));
             }
             return output;
         }
 
-        std::vector<std::shared_ptr<Array>> meshes() {
+        std::vector<py::array> meshes() {
             PipelineExecutor* executor = _get_executor();
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
-            std::vector<std::shared_ptr<Array>> output;
+            std::vector<py::array> output;
             for (const auto &view: executor->getManagerConst().views()) {
-                PyArrayObject *arr(python::meshToNumpyArray(view->mesh()));
-                output.push_back(std::make_shared<Array>((PyArrayObject*) arr));
+                PyArrayObject* arr(meshToNumpyArray(view->mesh()));
+                output.push_back(py::reinterpret_steal<py::array>((PyObject*)arr));
             }
             return output;
         }
