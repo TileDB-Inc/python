@@ -46,8 +46,6 @@ namespace pdal {
 
     class Pipeline {
     public:
-        virtual ~Pipeline() { _inputs.clear(); }
-
         int64_t execute() { return _get_executor()->execute(); }
 
         // writable props
@@ -110,7 +108,7 @@ namespace pdal {
         void _del_executor() { _executor.reset(); }
 
     private:
-        std::shared_ptr<PipelineExecutor> _executor;
+        std::unique_ptr<PipelineExecutor> _executor;
         std::vector <std::shared_ptr<pdal::python::Array>> _inputs;
         int _loglevel;
 
