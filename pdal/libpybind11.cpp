@@ -15,13 +15,6 @@ namespace py = pybind11;
 
 namespace pdal {
 
-    class PipelineExecShareable :
-        public PipelineExecutor,
-        public std::enable_shared_from_this<PipelineExecShareable> {
-    public:
-        PipelineExecShareable(std::string const& json) : PipelineExecutor(json) {}
-    };
-
     using namespace pybind11::literals;
     using namespace pybind11::detail;
     using namespace pdal::python;
@@ -99,7 +92,7 @@ namespace pdal {
         std::string metadata() { return _get_executor()->getMetadata(); }
 
         std::vector<std::shared_ptr<Array>> arrays() {
-            PipelineExecShareable* executor = _get_executor();
+            PipelineExecutor* executor = _get_executor();
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
             std::vector <std::shared_ptr<Array>> output;
@@ -111,7 +104,7 @@ namespace pdal {
         }
 
         std::vector<std::shared_ptr<Array>> meshes() {
-            PipelineExecShareable* executor = _get_executor();
+            PipelineExecutor* executor = _get_executor();
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
             std::vector<std::shared_ptr<Array>> output;
@@ -129,17 +122,19 @@ namespace pdal {
         void _del_executor() { _executor.reset(); }
 
     private:
-        std::shared_ptr<PipelineExecShareable> _executor;
+        std::shared_ptr<PipelineExecutor> _executor;
         std::vector <std::shared_ptr<Array>> _inputs;
         int _loglevel;
 
-        PipelineExecShareable* _get_executor() {
+        PipelineExecutor* _get_executor() {
             if (!_executor)
             {
-                _executor = std::make_shared<PipelineExecShareable>(_json());
-                _executor.get()->setLogLevel(_loglevel);
-                readPipeline(_executor.get(), _json());
-                addArrayReaders(_executor.get(), _inputs);
+                std::string json = _json();
+                PipelineExecutor* executor = new PipelineExecutor(json);
+                executor->setLogLevel(_loglevel);
+                readPipeline(executor, json);
+                addArrayReaders(executor, _inputs);
+                _executor.reset(executor);
             }
             return _executor.get();
         }
@@ -174,7 +169,6 @@ namespace pdal {
     PYBIND11_MODULE(libpybind11, m)
     {
     m.doc() = "Pipeline class";
-    py::class_<PipelineExecShareable, std::shared_ptr<PipelineExecShareable>>(m, "PipelineExecShareable");
     py::class_<Pipeline, PyPipeline, std::shared_ptr<Pipeline>>(m, "Pipeline", py::dynamic_attr())
         .def(py::init<>())
         .def(py::init<const Pipeline&>())
