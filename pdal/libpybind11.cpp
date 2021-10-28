@@ -52,11 +52,7 @@ namespace pdal {
     public:
         Pipeline() {}
 
-        Pipeline(const Pipeline&) {}
-
         virtual ~Pipeline() { _inputs.clear(); }
-
-        virtual std::shared_ptr<Pipeline> clone() const = 0;
 
         int64_t execute() { return _get_executor()->execute(); }
 
@@ -121,6 +117,8 @@ namespace pdal {
 
         bool _has_inputs() { return !_inputs.empty(); }
 
+        void _copy_inputs(const Pipeline& other) { _inputs = other._inputs; }
+
         void _del_executor() { _executor.reset(); }
 
     private:
@@ -142,29 +140,10 @@ namespace pdal {
         }
     };
 
-    class PyPipeline : public Pipeline {
-    public:
-        using Pipeline::Pipeline;
-
-        PyPipeline(const Pipeline& pipeline) : Pipeline(pipeline) {}
-
-        std::shared_ptr<Pipeline> clone() const override {
-            auto self = py::cast(this);
-            auto cloned = self.attr("clone")();
-
-            auto keep_python = std::make_shared<py::object>(cloned);
-            auto ptr = cloned.cast<PyPipeline*>();
-
-            return std::shared_ptr<Pipeline>(keep_python, ptr);
-        }
-    };
-
     PYBIND11_MODULE(libpybind11, m)
     {
-    m.doc() = "Pipeline class";
-    py::class_<Pipeline, PyPipeline, std::shared_ptr<Pipeline>>(m, "Pipeline", py::dynamic_attr())
+    py::class_<Pipeline>(m, "Pipeline")
         .def(py::init<>())
-        .def(py::init<const Pipeline&>())
         .def("execute", &Pipeline::execute)
         .def_property("inputs", nullptr, &Pipeline::setInputs)
         .def_property("loglevel", &Pipeline::getLoglevel, &Pipeline::setLogLevel)
@@ -175,6 +154,7 @@ namespace pdal {
         .def_property_readonly("arrays", &Pipeline::arrays)
         .def_property_readonly("meshes", &Pipeline::meshes)
         .def_property_readonly("_has_inputs", &Pipeline::_has_inputs)
+        .def("_copy_inputs", &Pipeline::_copy_inputs)
         .def("_get_json", &Pipeline::_get_json)
         .def("_del_executor", &Pipeline::_del_executor);
     m.def("getInfo", &getInfo, "getInfo");

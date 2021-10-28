@@ -13,8 +13,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     Mesh = None
 
-_USE_PYBIND11 = os.getenv("PDAL_PYTHON_PYBIND11")
-if _USE_PYBIND11:
+if os.getenv("PDAL_PYTHON_PYBIND11"):
     from . import libpybind11 as libpdalpython
 else:
     from . import libpdalpython
