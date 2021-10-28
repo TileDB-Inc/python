@@ -115,7 +115,9 @@ namespace pdal {
             return output;
         }
 
-        virtual std::string _json() = 0;
+        std::string _get_json() const {
+            PYBIND11_OVERRIDE_PURE(std::string, Pipeline, _get_json);
+        }
 
         bool _has_inputs() { return !_inputs.empty(); }
 
@@ -129,7 +131,7 @@ namespace pdal {
         PipelineExecutor* _get_executor() {
             if (!_executor)
             {
-                std::string json = _json();
+                std::string json = _get_json();
                 PipelineExecutor* executor = new PipelineExecutor(json);
                 executor->setLogLevel(_loglevel);
                 readPipeline(executor, json);
@@ -155,15 +157,6 @@ namespace pdal {
 
             return std::shared_ptr<Pipeline>(keep_python, ptr);
         }
-
-        std::string _json() override {
-            PYBIND11_OVERRIDE_PURE(
-                    std::string,
-                    Pipeline,
-                    _json,
-            );
-        }
-
     };
 
     PYBIND11_MODULE(libpybind11, m)
@@ -181,8 +174,8 @@ namespace pdal {
         .def_property_readonly("metadata", &Pipeline::metadata)
         .def_property_readonly("arrays", &Pipeline::arrays)
         .def_property_readonly("meshes", &Pipeline::meshes)
-        .def_property_readonly("_json", &Pipeline::_json)
         .def_property_readonly("_has_inputs", &Pipeline::_has_inputs)
+        .def("_get_json", &Pipeline::_get_json)
         .def("_del_executor", &Pipeline::_del_executor);
     m.def("getInfo", &getInfo, "getInfo");
     m.def("getDimensions", &getDimensions, "getDimensions");
