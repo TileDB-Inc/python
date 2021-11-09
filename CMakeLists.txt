@@ -14,12 +14,14 @@ set(Python3_FIND_FRAMEWORK "LAST")
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
 
 # find PDAL. Require 2.1+
-find_package(PDAL 2.1 REQUIRED)
+find_package(PDAL 2.3 REQUIRED)
+
 
 if(SKBUILD)
   find_package(PythonExtensions REQUIRED)
   find_package(Cython REQUIRED)
   find_package(pybind11 CONFIG REQUIRED)
+  find_package(Arrow REQUIRED)
   message(STATUS "The project is built using scikit-build")
 endif()
 

@@ -1,0 +1,19 @@
+{
+    "build_env_vars": {
+        "PDAL_PYTHON_PYBIND11": "=1"
+    },
+    "python": "3.9",
+    "requirements": {
+        "numpy": "1.21.2",
+        "pip+cmake": "",
+        "pip+cython": "",
+        "pip+ninja": "",
+        "pip+packaging": "",
+        "pip+pyarrow": "",
+        "pip+pybind11[global]": "",
+        "pip+pytest": "",
+        "pip+scikit-build": "",
+        "pip+wheel": ""
+    },
+    "tool_name": "conda"
+}

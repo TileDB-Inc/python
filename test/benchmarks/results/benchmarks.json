@@ -1,0 +1,23 @@
+{
+    "benchmarks.MemSuite.mem_ppl_arrow": {
+        "code": "class MemSuite:\n    def mem_ppl_arrow(self):\n        return self.arrays_pipeline.arrow_arrays()\n\n    def setup(self):\n        dim_x = np.arange(0, 1000000).tolist()\n        dim_y = np.arange(1000000, 2000000).tolist()\n        dim_z = np.arange(2000000, 3000000).tolist()\n        self.arrays = np.array(\n            [(x, y, z) for x, y, z in zip(dim_x, dim_y, dim_z)],\n            dtype=[(\"X\", np.float), (\"Y\", np.float), (\"Z\", np.float)]\n        )\n    \n        self.ppl_rd_las_json =\"\"\"\n        {\n            \"pipeline\": [\n                {\n                    \"type\": \"readers.las\",\n                    \"filename\": \"test/data/1.2-with-color.las\"\n                }\n            ]\n        }\n        \"\"\"\n    \n        self.ppl_fltr_arrays_json=\"\"\"\n        {\n            \"pipeline\": [\n                {\n                    \"type\": \"filters.range\",\n                    \"limits\": \"Z[0:5000000]\"\n                }\n            ]\n        }\n        \"\"\"\n        self.arrays_pipeline = pdal.Pipeline(self.ppl_fltr_arrays_json, [self.arrays])",
+        "name": "benchmarks.MemSuite.mem_ppl_arrow",
+        "param_names": [],
+        "params": [],
+        "timeout": 60.0,
+        "type": "memory",
+        "unit": "bytes",
+        "version": "47e361102bae112be25657c5541d3d35d20c92dba40ddeb052e00033e6c671fa"
+    },
+    "benchmarks.MemSuite.mem_ppl_get_arrays": {
+        "code": "class MemSuite:\n    def mem_ppl_get_arrays(self):\n        return self.arrays_pipeline.arrays\n\n    def setup(self):\n        dim_x = np.arange(0, 1000000).tolist()\n        dim_y = np.arange(1000000, 2000000).tolist()\n        dim_z = np.arange(2000000, 3000000).tolist()\n        self.arrays = np.array(\n            [(x, y, z) for x, y, z in zip(dim_x, dim_y, dim_z)],\n            dtype=[(\"X\", np.float), (\"Y\", np.float), (\"Z\", np.float)]\n        )\n    \n        self.ppl_rd_las_json =\"\"\"\n        {\n            \"pipeline\": [\n                {\n                    \"type\": \"readers.las\",\n                    \"filename\": \"test/data/1.2-with-color.las\"\n                }\n            ]\n        }\n        \"\"\"\n    \n        self.ppl_fltr_arrays_json=\"\"\"\n        {\n            \"pipeline\": [\n                {\n                    \"type\": \"filters.range\",\n                    \"limits\": \"Z[0:5000000]\"\n                }\n            ]\n        }\n        \"\"\"\n        self.arrays_pipeline = pdal.Pipeline(self.ppl_fltr_arrays_json, [self.arrays])",
+        "name": "benchmarks.MemSuite.mem_ppl_get_arrays",
+        "param_names": [],
+        "params": [],
+        "timeout": 60.0,
+        "type": "memory",
+        "unit": "bytes",
+        "version": "c7ab2ec493b01737c5368f8b8e69c6be13f8ad32bd54adec39a16e8565657a7e"
+    },
+    "version": 2
+}

@@ -1,0 +1,15 @@
+# tk pkg-config source file
+
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/e5335ded34b2270c0abe8b1c6a82d4ad
+exec_prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/e5335ded34b2270c0abe8b1c6a82d4ad
+libdir=/Users/chloet/Documents/pdlpy/test/benchmarks/env/e5335ded34b2270c0abe8b1c6a82d4ad/lib
+includedir=${prefix}/include
+
+Name: The Tk Toolkit
+Description: Tk is a cross-platform graphical user interface toolkit, the standard GUI not only for Tcl, but for many other dynamic languages as well.
+URL: https://www.tcl-lang.org/
+Version: 8.6.11
+Requires: tcl >= 8.6
+Libs: -L${libdir} -ltk8.6 -ltkstub8.6
+Libs.private:  
+Cflags: -I${includedir}

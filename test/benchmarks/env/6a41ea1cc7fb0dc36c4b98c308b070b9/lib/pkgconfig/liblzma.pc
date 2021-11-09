@@ -1,0 +1,19 @@
+#
+# Author: Lasse Collin
+#
+# This file has been put into the public domain.
+# You can do whatever you want with this file.
+#
+
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/6a41ea1cc7fb0dc36c4b98c308b070b9
+exec_prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/6a41ea1cc7fb0dc36c4b98c308b070b9
+libdir=/Users/chloet/Documents/pdlpy/test/benchmarks/env/6a41ea1cc7fb0dc36c4b98c308b070b9/lib
+includedir=/Users/chloet/Documents/pdlpy/test/benchmarks/env/6a41ea1cc7fb0dc36c4b98c308b070b9/include
+
+Name: liblzma
+Description: General purpose data compression library
+URL: https://tukaani.org/xz/
+Version: 5.2.5
+Cflags: -I${includedir}
+Libs: -L${libdir} -llzma
+Libs.private: -pthread -lpthread

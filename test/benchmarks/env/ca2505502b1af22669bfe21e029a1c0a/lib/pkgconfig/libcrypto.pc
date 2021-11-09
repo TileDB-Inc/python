@@ -1,0 +1,12 @@
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/ca2505502b1af22669bfe21e029a1c0a
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+enginesdir=${libdir}/engines-3
+
+Name: OpenSSL-libcrypto
+Description: OpenSSL cryptography library
+Version: 3.0.0
+Libs: -L${libdir} -lcrypto
+Libs.private:  
+Cflags: -I${includedir}

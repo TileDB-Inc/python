@@ -1,0 +1,11 @@
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/9b7f91ce3537d6b97c6e1b44c0da90cf
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+toolexeclibdir=${libdir}
+includedir=/Users/chloet/Documents/pdlpy/test/benchmarks/env/9b7f91ce3537d6b97c6e1b44c0da90cf/include
+
+Name: libffi
+Description: Library supporting Foreign Function Interfaces
+Version: 3.4.2
+Libs: -L${toolexeclibdir} -lffi
+Cflags: -I${includedir}

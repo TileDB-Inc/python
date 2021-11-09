@@ -1,0 +1,13 @@
+# Package Information for pkg-config
+
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/6a41ea1cc7fb0dc36c4b98c308b070b9
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: SQLite
+Description: SQL database engine
+Version: 3.36.0
+Libs: -L${libdir} -lsqlite3
+Libs.private: -lz 
+Cflags: -I${includedir}

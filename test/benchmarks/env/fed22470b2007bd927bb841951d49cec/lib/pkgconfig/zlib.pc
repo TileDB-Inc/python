@@ -1,0 +1,13 @@
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/fed22470b2007bd927bb841951d49cec
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+sharedlibdir=${libdir}
+includedir=${prefix}/include
+
+Name: zlib
+Description: zlib compression library
+Version: 1.2.11
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lz
+Cflags: -I${includedir}

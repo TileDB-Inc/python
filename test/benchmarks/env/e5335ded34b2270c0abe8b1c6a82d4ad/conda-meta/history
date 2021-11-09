@@ -1,0 +1,29 @@
+==> 2021-11-08 21:25:07 <==
+# cmd: /Users/chloet/anaconda3/bin/conda-env create -f /var/folders/dc/x599rk7n79g5p2t886p1jjth0000gn/T/tmpe6yqpk5o.yml -p /Users/chloet/Documents/pdlpy/test/benchmarks/env/e5335ded34b2270c0abe8b1c6a82d4ad --force
+# conda version: 4.10.3
++conda-forge/noarch::pip-21.3.1-pyhd8ed1ab_0
++conda-forge/noarch::tzdata-2021e-he74cb21_0
++conda-forge/noarch::wheel-0.37.0-pyhd8ed1ab_1
++conda-forge/osx-64::ca-certificates-2021.10.8-h033912b_0
++conda-forge/osx-64::libblas-3.9.0-12_osx64_openblas
++conda-forge/osx-64::libcblas-3.9.0-12_osx64_openblas
++conda-forge/osx-64::libcxx-12.0.1-habf9029_0
++conda-forge/osx-64::libffi-3.4.2-he49afe7_4
++conda-forge/osx-64::libgfortran-5.0.0-9_3_0_h6c81a4c_23
++conda-forge/osx-64::libgfortran5-9.3.0-h6c81a4c_23
++conda-forge/osx-64::liblapack-3.9.0-12_osx64_openblas
++conda-forge/osx-64::libopenblas-0.3.18-openmp_h3351f45_0
++conda-forge/osx-64::libzlib-1.2.11-h9173be1_1013
++conda-forge/osx-64::llvm-openmp-12.0.1-hda6cdc1_1
++conda-forge/osx-64::ncurses-6.2-h2e338ed_4
++conda-forge/osx-64::numpy-1.21.3-py39h7eed0ac_1
++conda-forge/osx-64::openssl-3.0.0-h0d85af4_2
++conda-forge/osx-64::python-3.9.7-h38b4d05_3_cpython
++conda-forge/osx-64::python_abi-3.9-2_cp39
++conda-forge/osx-64::readline-8.1-h05e3726_0
++conda-forge/osx-64::setuptools-58.5.3-py39h6e9494a_0
++conda-forge/osx-64::sqlite-3.36.0-h23a322b_2
++conda-forge/osx-64::tk-8.6.11-h5dbffcc_1
++conda-forge/osx-64::xz-5.2.5-haf1e3a3_1
++conda-forge/osx-64::zlib-1.2.11-h9173be1_1013
+# update specs: ['wheel', 'python=3.9', 'pip', 'numpy=1.21.3']

@@ -1,0 +1,13 @@
+# See: man pkg-config
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/e5335ded34b2270c0abe8b1c6a82d4ad
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: Python
+Description: Build a C extension for Python
+Requires:
+Version: 3.9
+Libs.private: -ldl   -framework CoreFoundation
+Libs:
+Cflags: -I${includedir}/python3.9

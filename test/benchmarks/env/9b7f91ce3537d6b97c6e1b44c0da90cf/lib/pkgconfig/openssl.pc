@@ -1,0 +1,9 @@
+prefix=/Users/chloet/Documents/pdlpy/test/benchmarks/env/9b7f91ce3537d6b97c6e1b44c0da90cf
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: OpenSSL
+Description: Secure Sockets Layer and cryptography libraries and tools
+Version: 3.0.0
+Requires: libssl libcrypto
