@@ -23,22 +23,22 @@ namespace py = pybind11;
 int d = arrow::py::import_pyarrow();
 namespace pybind11 {
     namespace detail {
-        template<> struct type_caster<std::shared_ptr<arrow::Array>> {
+        template<> struct type_caster<std::shared_ptr<arrow::ChunkedArray>> {
         public:
-        PYBIND11_TYPE_CASTER(std::shared_ptr<arrow::Array>, _("pyarrow::Array"));
+        PYBIND11_TYPE_CASTER(std::shared_ptr<arrow::ChunkedArray>, _("pyarrow::ChunkedArray"));
         bool load(handle src, bool) {
             PyObject* source = src.ptr();
-            if (!arrow::py::is_array(source))
+            if (!arrow::py::is_chunked_array(source))
                 return false;
-            arrow::Result<std::shared_ptr<arrow::Array>> result = arrow::py::unwrap_array(source);
+            arrow::Result<std::shared_ptr<arrow::ChunkedArray>> result = arrow::py::unwrap_chunked_array(source);
             if (!result.ok())
                 return false;
             value = result.ValueOrDie();
             return true;
         }
 
-        static handle cast(std::shared_ptr<arrow::Array> src, return_value_policy, handle) {
-            return arrow::py::wrap_array(src);
+        static handle cast(std::shared_ptr<arrow::ChunkedArray> src, return_value_policy, handle) {
+            return arrow::py::wrap_chunked_array(src);
         }
 
     };
@@ -110,26 +110,29 @@ namespace pdal {
 
         std::string metadata() { return _get_executor()->getMetadata(); }
 
-        std::vector<std::shared_ptr<arrow::Array>> arrow_arrays() {
+        std::vector<std::shared_ptr<arrow::ChunkedArray>> arrow_arrays() {
             PipelineExecutor* executor = _get_executor();
             if (!executor->executed())
                 throw std::runtime_error("call execute() before fetching arrays");
-            std::vector<std::shared_ptr<arrow::Array>> output;
+            std::vector<std::shared_ptr<arrow::ChunkedArray>> output;
             for (const auto &view: executor->getManagerConst().views())
             {
+                DimTypeList types = view->dimTypes();
+
+                std::vector<std::shared_ptr<arrow::Array>> view_chunks;
+
                 arrow::DoubleBuilder builder;
-                arrow::Status s1 = builder.Resize(view->size() * view->dims().size());
-                for (PointId idx = 0; idx < view->size(); ++idx)
-                {
-                    for (const auto& dim: view->dimTypes())
+                builder.Resize(view->dims().size());
+                for (PointId idx = 0; idx < view->size(); ++idx) {
+                    for (const auto& dim: types)
                     {
                         arrow::Status s = builder.Append(view->getFieldAs<double>(dim.m_id, idx));
                     }
+                    view_chunks.push_back(builder.Finish().MoveValueUnsafe());
+                    builder.Reset();
                 }
-                auto maybe_array = builder.Finish();
-                const std::shared_ptr<arrow::Array> flat_array = *maybe_array;
-                std::shared_ptr<arrow::Array> list_array = arrow::FixedSizeListArray::FromArrays(flat_array, view->dims().size()).ValueOrDie();
-                output.push_back(list_array);
+                auto view_array = std::make_shared<arrow::ChunkedArray>(std::move(view_chunks));
+                output.push_back(std::move(view_array));
             }
             return output;
         }
@@ -205,7 +208,7 @@ using namespace pdal;
 PYBIND11_MODULE(libpybind11, m)
 {
 arrow::py::import_pyarrow();
-py::class_<std::shared_ptr<arrow::Array>>(m, "pyarrow::Array");
+py::class_<std::shared_ptr<arrow::ChunkedArray>>(m, "pyarrow::ChunkedArray");
 py::class_<Pipeline, PyPipeline>(m, "Pipeline", py::dynamic_attr())
     .def(py::init<>())
     .def("execute", &Pipeline::execute)
