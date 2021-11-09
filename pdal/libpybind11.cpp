@@ -1,3 +1,4 @@
+#include "Python.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
@@ -10,9 +11,42 @@
 #include "PyDimension.hpp"
 #include "PyPipeline.hpp"
 
+#include <arrow/python/pyarrow.h>
+#include <arrow/array/builder_primitive.h>
+#include <arrow/api.h>
+#include <arrow/testing/util.h>
+#include <arrow/python/extension_type.h>
+
+
+
 namespace py = pybind11;
+int d = arrow::py::import_pyarrow();
+namespace pybind11 {
+    namespace detail {
+        template<> struct type_caster<std::shared_ptr<arrow::Array>> {
+        public:
+        PYBIND11_TYPE_CASTER(std::shared_ptr<arrow::Array>, _("pyarrow::Array"));
+        bool load(handle src, bool) {
+            PyObject* source = src.ptr();
+            if (!arrow::py::is_array(source))
+                return false;
+            arrow::Result<std::shared_ptr<arrow::Array>> result = arrow::py::unwrap_array(source);
+            if (!result.ok())
+                return false;
+            value = result.ValueOrDie();
+            return true;
+        }
+
+        static handle cast(std::shared_ptr<arrow::Array> src, return_value_policy, handle) {
+            return arrow::py::wrap_array(src);
+        }
+
+    };
+}
+}
 
 namespace pdal {
+
     using namespace py::literals;
 
     py::object getInfo() {
@@ -46,6 +80,9 @@ namespace pdal {
 
     class Pipeline {
     public:
+        Pipeline() {}
+        virtual ~Pipeline() {}
+
         int64_t execute() { return _get_executor()->execute(); }
 
         // writable props
@@ -73,6 +110,31 @@ namespace pdal {
 
         std::string metadata() { return _get_executor()->getMetadata(); }
 
+        std::vector<std::shared_ptr<arrow::Array>> arrow_arrays() {
+            PipelineExecutor* executor = _get_executor();
+            if (!executor->executed())
+                throw std::runtime_error("call execute() before fetching arrays");
+            std::vector<std::shared_ptr<arrow::Array>> output;
+            for (const auto &view: executor->getManagerConst().views())
+            {
+                arrow::DoubleBuilder builder;
+                arrow::Status s1 = builder.Resize(view->size() * view->dims().size());
+                for (PointId idx = 0; idx < view->size(); ++idx)
+                {
+                    for (const auto& dim: view->dimTypes())
+                    {
+                        arrow::Status s = builder.Append(view->getFieldAs<double>(dim.m_id, idx));
+                    }
+                }
+                auto maybe_array = builder.Finish();
+                const std::shared_ptr<arrow::Array> flat_array = *maybe_array;
+                std::shared_ptr<arrow::Array> list_array = arrow::FixedSizeListArray::FromArrays(flat_array, view->dims().size()).ValueOrDie();
+                output.push_back(list_array);
+            }
+            return output;
+        }
+
+
         std::vector<py::array> arrays() {
             PipelineExecutor* executor = _get_executor();
             if (!executor->executed())
@@ -97,9 +159,7 @@ namespace pdal {
             return output;
         }
 
-        std::string _get_json() const {
-            PYBIND11_OVERRIDE_PURE(std::string, Pipeline, _get_json);
-        }
+        virtual std::string _get_json() const = 0;
 
         bool _has_inputs() { return !_inputs.empty(); }
 
@@ -126,27 +186,44 @@ namespace pdal {
         }
     };
 
-    PYBIND11_MODULE(libpybind11, m)
+    class PyPipeline : public Pipeline
     {
-    py::class_<Pipeline>(m, "Pipeline")
-        .def(py::init<>())
-        .def("execute", &Pipeline::execute)
-        .def_property("inputs", nullptr, &Pipeline::setInputs)
-        .def_property("loglevel", &Pipeline::getLoglevel, &Pipeline::setLogLevel)
-        .def_property_readonly("log", &Pipeline::log)
-        .def_property_readonly("schema", &Pipeline::schema)
-        .def_property_readonly("pipeline", &Pipeline::pipeline)
-        .def_property_readonly("metadata", &Pipeline::metadata)
-        .def_property_readonly("arrays", &Pipeline::arrays)
-        .def_property_readonly("meshes", &Pipeline::meshes)
-        .def_property_readonly("_has_inputs", &Pipeline::_has_inputs)
-        .def("_copy_inputs", &Pipeline::_copy_inputs)
-        .def("_get_json", &Pipeline::_get_json)
-        .def("_del_executor", &Pipeline::_del_executor);
-    m.def("getInfo", &getInfo);
-    m.def("getDimensions", &getDimensions);
-    m.def("infer_reader_driver", &StageFactory::inferReaderDriver);
-    m.def("infer_writer_driver", &StageFactory::inferWriterDriver);
+    public:
+        using Pipeline::Pipeline;
+
+        std::string _get_json() const override
+        {
+            PYBIND11_OVERRIDE_PURE(std::string, Pipeline, _get_json,);
+        }
+
     };
 
 }; // namespace pdal
+
+using namespace pdal;
+
+PYBIND11_MODULE(libpybind11, m)
+{
+arrow::py::import_pyarrow();
+py::class_<std::shared_ptr<arrow::Array>>(m, "pyarrow::Array");
+py::class_<Pipeline, PyPipeline>(m, "Pipeline", py::dynamic_attr())
+    .def(py::init<>())
+    .def("execute", &Pipeline::execute)
+    .def_property("inputs", nullptr, &Pipeline::setInputs)
+    .def_property("loglevel", &Pipeline::getLoglevel, &Pipeline::setLogLevel)
+    .def_property_readonly("log", &Pipeline::log)
+    .def_property_readonly("schema", &Pipeline::schema)
+    .def_property_readonly("pipeline", &Pipeline::pipeline)
+    .def_property_readonly("metadata", &Pipeline::metadata)
+    .def_property_readonly("arrays", &Pipeline::arrays)
+    .def_property_readonly("meshes", &Pipeline::meshes)
+    .def_property_readonly("_has_inputs", &Pipeline::_has_inputs)
+    .def("_copy_inputs", &Pipeline::_copy_inputs)
+    .def("_get_json", &Pipeline::_get_json)
+    .def("_del_executor", &Pipeline::_del_executor)
+    .def("arrow_arrays", &Pipeline::arrow_arrays);
+m.def("getInfo", &getInfo);
+m.def("getDimensions", &getDimensions);
+m.def("infer_reader_driver", &StageFactory::inferReaderDriver);
+m.def("infer_writer_driver", &StageFactory::inferWriterDriver);
+};
