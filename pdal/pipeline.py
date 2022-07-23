@@ -38,11 +38,10 @@ class Pipeline(libpdalpython.Pipeline):
         self.inputs = arrays
         self.loglevel = loglevel
 
-    def __getstate__(self):
-        state = self.pipeline
-        return state
+    def __getstate__(self) -> str:
+        return cast(str, self.pipeline)
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: str) -> None:
         self.__init__(state)
 
     @property
@@ -111,7 +110,7 @@ class Pipeline(libpdalpython.Pipeline):
         stage2tag: Dict[Stage, str] = {}
         stages = self._stages
         if all(isinstance(stage, Reader) for stage in stages):
-            stages = [*stages, Filter.merge()]
+            stages = [*stages, Filter.merge()]  # type: ignore
         for stage in stages:
             stage2tag[stage] = stage.tag or _generate_tag(stage, stage2tag.values())
             options = stage.options

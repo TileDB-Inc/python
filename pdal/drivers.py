@@ -1,14 +1,10 @@
-import json
-import subprocess
 from dataclasses import dataclass, field
 from typing import Callable, ClassVar, FrozenSet, Mapping, Optional, Sequence, Type
 
-from .pipeline import Filter, Reader, Stage, Writer
 from . import libpdalpython
+from .pipeline import Filter, Reader, Stage, Writer
 
-import shlex
-
-StreamableTypes: FrozenSet
+StreamableTypes: FrozenSet[str]
 
 
 @dataclass

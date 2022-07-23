@@ -15,12 +15,11 @@ def a_filter(ins, outs):
     return True
 
 
-def compare_structured_arrays(arr1, arr2):
-    for field in arr1.dtype.names:
-        equal = np.all(np.equal(arr1[field], arr2[field]))
-        if not equal:
-            return False
-    return True
+def assert_structured_array_equal(arr1, arr2):
+    # the dtype ordering of these arrays are not going to be the same
+    assert set(arr1.dtype.names) == set(arr2.dtype.names)
+    assert all(np.all(np.equal(arr1[field], arr2[field])) for field in arr1.dtype.names)
+
 
 def get_pipeline(filename):
     with open(os.path.join(DATADIRECTORY, filename), "r") as f:
@@ -142,8 +141,7 @@ class TestPipeline:
         assert json.loads(r.pipeline) == {
             "pipeline": [
                 {
-                    # TODO: update this after https://github.com/PDAL/PDAL/issues/3574
-                    "filename": f"test/data/1.2-with-color.las",
+                    "filename": "test/data/1.2-with-color.las",
                     "tag": "readers_las1",
                     "type": "readers.las",
                 },
@@ -368,8 +366,9 @@ class TestPipeline:
         r = pdal.Reader("test/data/autzen-utm.las")
         p = r.pipeline()
         info = p.quickinfo
-        assert 'readers.las' in info.keys()
-        assert info['readers.las']['num_points'] == 1065
+        assert "readers.las" in info.keys()
+        assert info["readers.las"]["num_points"] == 1065
+
 
 class TestArrayLoad:
     def test_merged_arrays(self):
@@ -448,7 +447,6 @@ class TestArrayLoad:
         assert refcount == 1
 
 
-
 class TestMesh:
     @pytest.mark.parametrize("filename", ["sort.json", "sort.py"])
     def test_no_execute(self, filename):
@@ -504,7 +502,7 @@ class TestPipelineIterator:
             arrays = list(r.iterator(chunk_size=100))
             assert len(arrays) == 11
             concat_array = np.concatenate(arrays)
-            assert compare_structured_arrays(np.concatenate(arrays), concat_array) == True
+            assert_structured_array_equal(np.concatenate(arrays), concat_array)
 
     @pytest.mark.parametrize("filename", ["range.json", "range.py"])
     def test_StopIteration(self, filename):
@@ -558,7 +556,9 @@ class TestPipelineIterator:
         non_streaming_array = np.concatenate(p.arrays)
         for chunk_size in range(5, 100, 5):
             streaming_arrays = list(p.iterator(chunk_size=chunk_size))
-            assert compare_structured_arrays(np.concatenate(streaming_arrays), non_streaming_array) == True
+            assert_structured_array_equal(
+                np.concatenate(streaming_arrays), non_streaming_array
+            )
 
     @pytest.mark.parametrize("filename", ["range.json", "range.py"])
     def test_premature_exit(self, filename):
@@ -568,12 +568,9 @@ class TestPipelineIterator:
         assert len(r.arrays) == 1
         array = r.arrays[0]
 
-        # the dtype ordering of these arrays are not going to be the 
-        # same. Use our testing method to compare them.
-
         for _ in range(10):
             for array2 in r.iterator(chunk_size=100):
-                assert compare_structured_arrays(array2, array[: len(array2)]) == True
+                assert_structured_array_equal(array2, array[: len(array2)])
                 break
 
     @pytest.mark.parametrize("filename", ["range.json", "range.py"])
